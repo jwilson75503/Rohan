@@ -1,0 +1,546 @@
+/*! \mainpage Rohan Multivalued Neural Network Simulator
+ *
+ * \section intro_sec Introduction
+ *
+ * Rohan was developed by Jeff Wilson <jwilson@clueland.com> at the Texas A&M University - Texarkana Computational Intelligence Laboratory < http://www.tamut.edu/CIL/ > under the direction of Dr Igor Aizenberg.
+ *
+ * Funded by National Science Foundation grant #0925080
+ *
+ * \section install_sec Installation
+ *
+ * \subsection step1 Step 1: Opening the box
+ *  
+ * Hopefully included in the 1.0 or later release.
+ */
+// Rohan.cpp : Defines the entry point for the console application.
+
+//warning tamers
+
+//#define sprintf "sprintf_s"
+
+/* Includes, cuda */
+#include "Rohan.h"
+#include "Rohan-data.h"
+#include "Rohan-io.h"
+#include "Rohan-learn.h"
+#include "Rohan-menu.h"
+#include "Rohan-kernel.h"
+#include "Rohan-class.h"
+#include "ShowMe.h"
+#include "stdafx.h"
+#include <conio.h> //for _getch 
+
+#include <cuda.h>
+#include <cublas.h>
+#include <cutil_inline.h>
+#include <cuda_runtime_api.h>
+#include <multithreading.h>
+
+//#include <time.h> // for tsrtuct
+#include <sys/timeb.h>
+#include <iostream>
+#include <stdlib.h>
+using namespace std;
+using std::cin;
+using std::cout;
+#include <math.h>  //for sqrt()
+//#include "Rohan-test.h"
+
+#define IDX2C(i,j,ld) (((j)*(ld))+(i))
+#define TWO_PI 6.283185307179586476925286766558
+
+/// globals
+int iDebugLvl;
+int iTrace;
+
+/// prototypes are fuller than usual cos I simply copy them from the declarations
+int AnteLoop(struct rohanContext& rSes, int argc, _TCHAR* argv[]);
+int GetGlobalSettings(struct rohanContext& rSes);
+int BeginSession(struct rohanContext& rSes);
+int GetNNTop(struct rohanContext& rSes);
+int GetWeightSet(struct rohanContext& rSes);
+int GetSampleSet(struct rohanContext& rSes);
+int ReGetSampleSet(struct rohanContext& rSes);
+int PrepareNetwork(struct rohanContext& rSes);
+void MainLoop(struct rohanContext& rSes);
+int ShowDiagnostics(struct rohanContext& rSes);
+int SilentDiagnostics(struct rohanContext& rSes);
+int InteractiveEvaluation(struct rohanContext& rSes);
+int InteractiveLearning(struct rohanContext& rSes);
+void PostLoop(struct rohanContext& rSes);
+int EndItAll(struct rohanContext& rSes);
+
+int _tmain(int argc, _TCHAR* argv[])
+{mIDfunc/// general program procedure is to setup preparations for the duty loop, execute it, then do housekeeping after
+	 rohanContext rSes /* This is the master session context object, with the learning set and network objects as members */;
+
+	cutilSafeCall( cudaSetDevice(1) ); /// all cuda calls to run on headless second device
+	
+	/*cHostTeam chtMule;
+	chtMule.SetContext(rSes);
+	chtMule.ShowMe();*/
+	
+	// create objects
+	cDeviceTeam cdtHorse(rSes);
+	cBarge cbBarge(rSes);
+	cDrover cdDrover(rSes);
+	
+	// proceed with operations
+	if(cdDrover.DoAnteLoop(argc, argv, &cdDrover, &cbBarge, &cdtHorse)){
+		cdDrover.DoMainLoop(rSes);
+	}
+	cdDrover.DoPostLoop(rSes);
+	
+	// end of operations
+	exit (0);
+}
+
+//int AnteLoop(struct rohanContext& rSes, int argc, _TCHAR* argv[])
+//{mIDfunc /// This function prepares all parameters, contexts, and data structures necesary for learning and evaluation.
+//	int iReturn=0;
+//	
+//	if (argc) {
+//		rSes.bConsoleUsed=false;
+//		rSes.bCLargsUsed=true;
+//		// call function to parse CLI args here
+//	}
+//	else {
+//		rSes.bConsoleUsed=true;
+//		rSes.bCLargsUsed=false;
+//	} /// potentially abusable 
+//	printf("Rohan v%s Neural Network Application\n", VERSION);
+//	//print_NVCC_min_spec();
+//	iTrace=0;
+//	if (CublasVerify(rSes)){
+//		cout << "CUBLAS present" << endl;
+//		iReturn=GetGlobalSettings(rSes);
+//		if (GetSampleSet(rSes)){
+//			iReturn=PrepareNetwork(rSes);
+//			iReturn=ShowDiagnostics(rSes);
+//		}
+//		else {
+//			cout << "Failed to load samples" << endl;
+//		}
+//	}
+//	else {
+//		fprintf(stderr, "Unrecoverable Error: No CUDA hardware or no CUBLAS functions present.\n", ++rSes.iErrors);
+//		iReturn=0;
+//	}
+//	return iReturn;
+//}
+
+//void MainLoop(struct rohanContext& rSes)
+//{mIDfunc /// performs the main business of the application, in this case the task of training a weight set to more closely reproduce the sampled outputs from the sampled inputs
+//	//iSelect=iReturn; // selection will only proceed if sucessful, non-zero value is returned
+//	//while (iSelect && iReturn){
+//	int iReturn=0, iSelect=1;
+//	cout << "Main duty loop begin." << endl;
+//	
+//	while(iSelect){
+//		iSelect=DisplayMenu(0, rSes);
+//		if (iSelect==1) iReturn=BeginSession(rSes); // new or resume session
+//		if (iSelect==2) iReturn=GetNNTop(rSes);
+//		if (iSelect==3) iReturn=ReGetSampleSet(rSes);
+//		if (iSelect==4) iReturn=GetWeightSet(rSes);
+//		if (iSelect==5) iReturn=InteractiveEvaluation(rSes);
+//		if (iSelect==6) iReturn=InteractiveLearning(rSes);
+//		if (iSelect==7) iReturn=cuPreSaveNNWeights(rSes);
+//		if (iSelect==8) iReturn=dualRandomizeWeights(rSes);
+//		//if (iSelect==8) iReturn=TestPatLS(rSes, false)+ShowMeLS(rSes, false)+ShowMeST(rSes, false)+TestPatWS(rSes, false)+ShowMeWS(rSes, false)+ShowMeSes(rSes, false);
+//		//if (iSelect==9) iReturn=devResetAllDeltasAndOutputs(rSes)+ShowMeErr(rSes, false)+ShowMeLS(rSes, true)+ShowMeWS(rSes, false)+ShowMeSes(rSes, false);
+//		//if (iSelect==9) iReturn=devResetAllDeltasAndOutputs(rSes)+ShowMeErr(rSes, false)+ShowMeLS(rSes, false)+ShowMeWS(rSes, false)+ShowMeSes(rSes, false);
+//		if (iSelect==9) {
+//			printf("dev RMSE %f\n", knlRMSE(rSes,0));
+//			rSes.dTargRMSE=0.1;
+//			rSes.dMAX=10.0;
+//			rSes.iEpochLength=1;
+//			rSes.lSampleQtyReq=2;
+//			long count = 0; rSes.lSamplesTrainable=1; //set trainable to 1 to allow loop to proceed at least once
+//			while(rSes.dTargRMSE<rSes.dRMSE && rSes.lSamplesTrainable && count < rSes.iEpochLength){ // target not met, trainable samples left
+//				rSes.lSamplesTrainable=TrainNNThresh(rSes , true);
+//				cuEvalNNLearnSet(rSes);
+//				devEvalNNLearnSet(rSes);
+//				rSes.dRMSE = RmseNN(rSes, 0);
+//				printf(" RMSE = % #3.5g/% #3.5g, iteration %d\n", rSes.dRMSE, knlRMSE(rSes,0), ++count);
+//			}
+//		}
+//		SilentDiagnostics(rSes);
+//	}
+//}
+
+//void PostLoop(struct rohanContext& rSes)
+//{mIDfunc /// Final operations including freeing of dynamically allocated memory are called from here. 
+//	int iReturn=0, iSelect=0;
+//
+//	printf("Program terminated after %d warning(s), %d operational error(s).\n", rSes.iWarnings, rSes.iErrors);
+//	EndItAll(rSes);
+//	printf("Waiting on keystroke...\n");
+//	_getch();
+//}
+
+
+//int GetGlobalSettings(struct rohanContext& rSes)
+//{mIDfunc /// sets initial and default value for globals and settings
+//	int iReturn=0;
+//	cublasStatus csStatus;
+//	//	globals
+//	iTrace=0; cout << "Tracing is "; (iTrace ? cout << "on\n" : cout << "off.\n" );
+//	iDebugLvl=0; cout << "Debug level is " << iDebugLvl << "\n";
+//	// session accrual
+//	rSes.iWarnings=0; rSes.iErrors=0; cout << "Session warning and session error counts reset.\n";
+//	rSes.lSampleQtyReq=0;
+//	// session modes
+//	rSes.bContActivation=true; cout << "Activation default is CONTINUOUS.\n";
+//	
+//	rSes.bRInJMode=false; cout << "Reversed Input Order is OFF.\n"; // this is working backward for some reason 2/08/11
+//	rSes.bRMSEon=true; cout << "RMSE stop condition is ON. XX\n"; //
+//	rSes.iEpochLength=1000; cout << "Epoch length is 1000 iterations.\n";
+//	strcpy(rSes.sSesName,"DefaultSession");
+//	// session member objects
+//	rSes.rLearn=new struct rohanLearningSet;
+//	rSes.rNet=new rohanNetwork;
+//	// scratch space
+//	csStatus=cublasAlloc(1024, sizeof(double), (void**)&(rSes.rLearn->gpudSE1024)); 
+//			mCuMsg(csStatus,"cublasAlloc()")
+//
+//	return iReturn;
+//}
+
+
+int BeginSession(struct rohanContext& rSes)
+{mIDfunc /// accepts keyboard input to define the name of the session, which will be used to name certain output files.
+	
+	cout << "\nEnter a session name: ";
+	cin >> rSes.sSesName; 
+
+	return 1;
+}
+
+
+//int GetNNTop(struct rohanContext& rSes)
+//{mIDfunc /// sets up network poperties and data structures for use
+//	char sNeuronsPerLayer[254];
+//	int iSectorQty, iInputQty;
+//
+//	cout << "Enter # of sectors (0 to return): ";
+//	cin >> iSectorQty;
+//	if(iSectorQty){
+//		cout << "Enter # of inputs (0 to return): ";
+//		cin >> iInputQty; // last chance to quit
+//	}
+//	if(iSectorQty && iInputQty) {
+//		cuFreeNNTop(rSes); // release old network structures
+//		rSes.rNet->iSectorQty=iSectorQty; // update sector qty
+//		rSes.rLearn->iInputQty=iInputQty; // upsdate input qty
+//		cout << "Enter numbers of neurons per layer separated by commas, \ne.g. 63,18,1 : ";
+//		cin >> sNeuronsPerLayer;
+//		DoCuMakeLayers(iInputQty, sNeuronsPerLayer, rSes); // make new layers
+//		rSes.rNet->dK_DIV_TWO_PI = rSes.rNet->iSectorQty / TWO_PI; // Prevents redundant conversion operations
+//		DoCuMakeNNStructures(rSes); // allocates memory and populates network structural arrays
+//		DoCuRandomizeWeights(rSes); // populate newtork with random weight values
+//		printf("Random weights loaded.\n");
+//		printf("%d-valued logic sector table made.\n", DoCuSectorTableMake(rSes));
+//		printf("\n");
+//		return rSes.rNet->iLayerQty;
+//	}
+//	else
+//		return 999;
+//}
+
+int GetWeightSet(struct rohanContext& rSes)
+{mIDfunc /// chooses and loads the weight set to be worked with
+	int iReturn=0; 
+	char sWeightSet[254];
+	FILE *fileInput;
+	
+	cout << "Enter name of binary weight set: ";
+	std::cin >> sWeightSet;
+	// File handle for input
+	
+	iReturn=BinaryFileHandleRead(sWeightSet, &fileInput);
+	if (iReturn==0) // unable to open file
+		++rSes.iErrors;
+	else{ // file opened normally
+		// file opening and reading are separated to allow for streams to be added later
+		iReturn=cuNNLoadWeights(rSes, fileInput);
+		if (iReturn) printf("%d weights read.\n", 
+			iReturn);
+		else {
+			printf("No Weights Read\n");
+			iReturn=0;
+		}
+	}
+	printf("\n");
+	return iReturn;
+}
+
+
+//int GetSampleSet(struct rohanContext& rSes)
+//{mIDfunc /// chooses and loads the learning set to be worked with Ante-Loop
+//	int iReturn=0; 
+//	//rSes.rLearn->bContInputs=false;
+//	//rSes.rLearn->iContOutputs=(int)false;
+//	cout << "Samples treated as discrete or continuous by fractionality. XX" << endl;
+//
+//	printf("Enter 0 for 10K-set, weights\n\t 1 for 3-set, weights\n\t 2 for 150-set, no wgts\n\t 3 for 3-set, no wgts\n\t 4 for 2-1 rand weights");
+//	printf("\n\t 5 for 416 samples x 200 inputs\nEnter 10+ for basic diag\n\t30+ for more diag\n\t70+ for full diag\n");
+//	std::cin >> iDebugLvl;
+//	//cout << "Loading trivial3 test learning set" << endl;
+//	//iDebugLvl=4;
+//	switch ( iDebugLvl % 10) {
+//		case 0:
+//		  rSes.rLearn->sLearnSet="AirplanePsDN1W3S10k.txt";
+//		  break;
+//		case 1:
+//		  rSes.rLearn->sLearnSet="trivial.txt";
+//		  break;
+//		case 2:
+//		  rSes.rLearn->sLearnSet="iris.txt";
+//		  break;
+//		case 3:
+//		  rSes.rLearn->sLearnSet="trivial2.txt";
+//		  break;
+//		case 4:
+//		  rSes.rLearn->sLearnSet="trivial3.txt";	
+//		  break;
+//		case 5:
+//		  rSes.rLearn->sLearnSet="PC-63-32-200-LearnSet.txt";
+//		  break;
+//		default:
+//		  rSes.rLearn->sLearnSet="iris.txt";
+//		  break;
+//	}
+//	rSes.iDebugLvl=iDebugLvl/=10; // drop final digit
+//	fprintf(stderr, "Debug level is %d.\n", iDebugLvl);
+//	FILE *fileInput;
+//	// File handle for input
+//	
+//	iReturn=AsciiFileHandleRead(rSes.rLearn->sLearnSet, &fileInput);
+//	if (iReturn==0) // unable to open file
+//		++rSes.iErrors;
+//	else{ // file opened normally
+//		// file opening and reading are separated to allow for streams to be added later
+//		long lLinesRead=cuLoadSampleSet(rSes, fileInput);
+//		if (lLinesRead) {
+//			printf("Parsed %d lines from %s\nStored %d samples, %d input values, %d output values each.\n", 
+//				lLinesRead, rSes.rLearn->sLearnSet, rSes.rLearn->lSampleQty, rSes.rLearn->iInputQty, rSes.rLearn->iOutputQty);
+//				//load samples into the parallel structures in the GPU memory
+//			if(CurateSectorValue(rSes)) {
+//				if(rSes.bCublasAvailable){
+//					devCopySampleSet(rSes);
+//					//cout << endl << "<" << rSes.rLearn->rSample[0].cdcDOutputs[0].y << "&"; cout << rSes.rLearn->rSample[0].cdcAltDOutputs[0].y << ">" << endl;
+//				}
+//			}
+//			else{
+//				return 0;
+//			} //endif for CurateSectorValue
+//		}
+//		else {
+//			printf("No Samples Read by cuLoadSampleSet\n");
+//			iReturn=0;
+//		}
+//	}
+//	return iReturn;
+//}
+
+
+int ReGetSampleSet(struct rohanContext& rSes)
+{mIDfunc /// chooses and loads the learning set to be worked with during Main Loop
+	int iReturn=0; 
+	rSes.rLearn->bContInputs=false;
+	rSes.rLearn->iContOutputs=(int)false;
+	char sSampleSet[254];
+	FILE *fileInput;
+	
+	cout << "Enter name of sample set: ";
+	std::cin >> sSampleSet;
+	
+	iReturn=AsciiFileHandleRead(rSes.rLearn->sLearnSet, &fileInput);
+	if (iReturn==0) // unable to open file
+		++rSes.iErrors;
+	else{ // file opened normally
+		// file opening and reading are separated to allow for streams to be added later
+		long lLinesRead=cuReLoadSampleSet(rSes, fileInput);
+		if (lLinesRead) {
+			printf("Parsed %d lines from %s\nStored %d samples, %d input values, %d output values each.\n", 
+				lLinesRead, rSes.rLearn->sLearnSet, rSes.rLearn->lSampleQty, rSes.rLearn->iInputQty, rSes.rLearn->iOutputQty);
+			if(CurateSectorValue(rSes)==0)
+				return 0;
+			else{
+				if(rSes.bCublasAvailable){
+					devCopyArchValues(rSes); // Make sure we are using current settings
+					devCopySampleSet(rSes);
+				}
+			}// endif for SCSampleValue
+		}
+		else {
+			printf("No Samples Read by cuReLoadSampleSet\n");
+			iReturn=0;
+		}// endif for iLinesRead
+	}
+	printf("\n");
+	return iReturn;
+}
+
+//int PrepareNetwork(struct rohanContext& rSes)
+//{mIDfunc /// sets up network poperties and data structures for use
+//	int iReturn=0;
+//	// on with it
+//	//rSes.rNet->dK_DIV_TWO_PI = rSes.rNet->iSectorQty / TWO_PI; // Prevents redundant conversion operations
+//	iReturn=cuPrepareNetwork(rSes);
+//	if (rSes.bCublasAvailable){
+//		devPrepareNetwork(rSes);
+//	}
+//	return iReturn;
+//}
+
+int ShowDiagnostics(struct rohanContext& rSes)
+{mIDfunc /// show some statistics, dump weights, and display warning and error counts
+	
+	int iReturn=1;
+	long lSamplesEvald;
+	
+	lSamplesEvald = cuEvalNNLearnSet(rSes);
+		if (lSamplesEvald) printf("%d samples evaluated, ", lSamplesEvald);
+		else {printf("No samples evaluated by cuEvalNNLearnSet\n");
+			++rSes.iErrors;
+			printf("Waiting on keystroke...\n"); _getch(); return iReturn;
+		}
+	lSamplesEvald=devEvalNNLearnSet(rSes);
+	int iDifferent = OutputValidate(rSes);
+	printf("%d differences found on verify.\n", iDifferent);
+//ShowMeLS(rSes.rLearn, false);
+//ShowMeWS(rSes.rNet, true);
+	rSes.dRMSE = RmseNN(rSes, 0);
+	double devdRMSE=knlRMSE(rSes, 0);
+	printf("RMSE %f/%f\n", rSes.dRMSE, devdRMSE);
+	// some illustrative default values
+	rSes.dTargRMSE=floor(rSes.dRMSE-1.0)+1.0;
+	rSes.dMAX=(double)abs(rSes.dRMSE-1.0);
+	printf("RMSE target is %f.\n", rSes.dTargRMSE);
+	printf("MAX threshold is %f.\n", rSes.dMAX);
+	int iTrainable = TrainNNThresh(rSes, false);
+	printf("%d trainable sample outputs found.\n", iTrainable);
+
+	WriteWeights(rSes);// record weights for posterity
+	
+	if (rSes.iWarnings) fprintf(stderr, "%d warnings.\n", rSes.iWarnings);
+	if (rSes.iErrors) fprintf(stderr, "%d operational errors.\n", rSes.iErrors);
+
+	return iReturn;
+}
+int SilentDiagnostics(struct rohanContext& rSes)
+{mIDfunc /// show some statistics, dump weights, and display warning and error counts
+	int iReturn=0;
+	
+	long lSamplesEvald = cuEvalNNLearnSet(rSes);
+	int iDifferent = OutputValidate(rSes);
+	//printf("%d differences found on verify.\n", iDifferent);
+	rSes.dRMSE = RmseNN(rSes, 0);
+	//printf("RMSE %f\n", rSes.dRMSE);
+	// some illustrative default values
+	rSes.dTargRMSE=floor(rSes.dRMSE-1.0)+1.0;
+	rSes.dMAX=(double)abs(rSes.dRMSE-1.0);
+	//printf("RMSE target is %f.\n", rSes.dTargRMSE);
+	//printf("MAX threshold is %f.\n", rSes.dMAX);
+	int iTrainable = TrainNNThresh(rSes, false);
+	//printf("%d trainable sample outputs found.\n", iTrainable);
+
+	// dump weights for verification
+	FILE *fileOutput; // File handle for input
+	iReturn=AsciiFileHandleWrite("weightdump.txt", &fileOutput);
+	//AsciiWeightDump(rSes, fileOutput); XX link error
+	
+	if (rSes.iWarnings) fprintf(stderr, "%d warnings.\n", rSes.iWarnings);
+	if (rSes.iErrors) fprintf(stderr, "%d operational errors.\n", rSes.iErrors);
+
+	return iReturn;
+}
+
+int InteractiveEvaluation(struct rohanContext& rSes)
+{mIDfunc /// allows user to ask for different number of samples to be evaluated
+	int iReturn=0;
+
+	printf("Enter qty of samples to evaluate, or 0 to end\n");
+	std::cin >> rSes.lSampleQtyReq;
+	++iReturn;
+	while(rSes.lSampleQtyReq){
+		// serial values are computed and then displayed
+		cuEvalNNLearnSet(rSes);
+		rSes.dRMSE = RmseNN(rSes, rSes.lSampleQtyReq);
+		printf("%s: first %d samples requested\nRMSE= %f", rSes.rNet->sWeightSet, rSes.lSampleQtyReq, rSes.dRMSE);
+		// parallel method takes over in mid-sentence to visualize speed difference
+		devEvalNNLearnSet(rSes);
+		double devdRMSE=knlRMSE(rSes, rSes.lSampleQtyReq); // XX
+		printf("/%f\n", devdRMSE);
+		printf("Enter qty of samples to evaluate, or 0 to end\n");
+		std::cin >> rSes.lSampleQtyReq;
+		++iReturn;
+	}
+	return iReturn;
+}
+
+int InteractiveLearning(struct rohanContext& rSes)
+{mIDfunc /// allows user to select learning threshold
+	int iReturn=0;
+//ShowMeWS(rSes.rNet, false);
+//ShowMeLS(rSes.rLearn, false);
+	//rSes.dRMSE = RmseNN(rSes, 0);
+	rSes.dRMSE = knlRMSE(rSes,0);
+	//double dTargRMSE;
+	printf(" Achieved RMSE = % #3.3g\n", rSes.dRMSE);
+	printf("Enter desired RMSE for learning, or 0 to end\n");
+	std::cin >> rSes.dTargRMSE;
+	if(rSes.dTargRMSE){
+		printf(" MAX = % #3.3g\n", rSes.dRMSE);
+		printf("Enter MAX allowable error per sample, or 0 to end\n");
+		std::cin >> rSes.dMAX;
+		if(rSes.dMAX){
+			printf(" Epoch length = %d\n", rSes.iEpochLength);
+			printf("Enter iterations per epoch, or 0 to end\n");
+			std::cin >> rSes.iEpochLength;
+			if(rSes.iEpochLength){
+				printf(" Sample qty = %d\n", rSes.lSampleQtyReq);
+				printf("Enter samples requested, or 0 to end\n");
+				std::cin >> rSes.lSampleQtyReq;
+				if(rSes.lSampleQtyReq){
+					++iReturn;
+					long count = 0; rSes.lSamplesTrainable=1; //set trainable to 1 to allow loop to proceed at least once
+					while(rSes.dTargRMSE<rSes.dRMSE && rSes.lSamplesTrainable && count < rSes.iEpochLength){ // target not met, trainable samples left
+						rSes.lSamplesTrainable=TrainNNThresh(rSes , true);
+						//cuEvalNNLearnSet(rSes);
+						devEvalNNLearnSet(rSes);
+						//rSes.dRMSE = RmseNN(rSes, 0);
+						rSes.dRMSE = knlRMSE(rSes, rSes.lSampleQtyReq);
+						//printf(" RMSE = %f/%f, trainables %d, iteration %d\n", RmseNN(rSes, 0), rSes.dRMSE, rSes.lSamplesTrainable,++count);
+						//++count;
+						printf(" RMSE = % #3.5g, trainable samples %d, iteration %d\n", rSes.dRMSE, rSes.lSamplesTrainable, ++count);
+						++iReturn;
+					}
+				}
+			}
+			if(rSes.lSamplesTrainable)
+				if(rSes.dTargRMSE>=rSes.dRMSE)
+					printf(" Achieved RMSE target %f.\n", rSes.dRMSE);
+				else printf(" Completed epoch of %d iterations.\n", rSes.iEpochLength);
+			else printf(" No trainable samples with MAX % #3.3g\n", rSes.dMAX);
+		}
+	}
+	return iReturn;
+}
+
+
+//int EndItAll(struct rohanContext& rSes)
+//{mIDfunc /// prepares for graceful ending of program
+//	int iReturn=0;
+//	cublasStatus csStatus;
+//
+//	iReturn=cuFree(rSes);
+//	csStatus=cublasShutdown(); // release any CUBLAS resources
+//	if(csStatus==CUBLAS_STATUS_NOT_INITIALIZED) { printf("CUBLAS library not initialized\n"); return iReturn;}
+//	else printf("CUBLAS resources released\n");
+//		mCuMsg(csStatus,"cublasShutdown()")
+//
+//	return iReturn;
+//}
+

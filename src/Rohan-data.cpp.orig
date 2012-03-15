@@ -1,0 +1,463 @@
+/* Includes, cuda */
+#include "cublas.h"
+#include "complex-math-func.h"
+#include <math.h>  //for M_PI
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include "Rohan-learn.h"
+#include "Rohan-kernel.h"
+#include "Rohan-io.h"
+#include "Rohan.h"
+#include "ShowMe.h"
+#define _USE_MATH_DEFINES
+#define ONE_PI 3.14159265358979323846264338327950288
+#define TWO_PI 6.283185307179586476925286766558
+#define IDX2C(i,j,ld) (((j)*(ld))+(i))
+
+extern int iDebugLvl, iTrace;
+
+
+
+//int devCopyNNStructures(struct rohanContext &rSes)
+//{mIDfunc
+///*! Initializes a parallel neural network structure in GPU-memory with the same given number of layers and
+// *  layer populations, allocates memory, and populates the set of weight values randomly.
+// *
+// * iLayerQty = 3 means Layer 1 and Layer 2 are "full" neurons, with output-only neurons on layer 0.
+// * 0th neuron on each layer is a stub with no inputs and output is alawys 1+0i, to accomodate internal weights of next layer.
+// * This allows values to be efficiently calculated by referring to all layers and neurons identically.
+// * 
+// * iNeuronQty[1] is # of neurons in Layer 1
+// * iNeuronQty[2] is # of neurons in Layer 2
+// * iNeuronQty[0] is # of inputs in Layer 0 */
+//	//int iUnderLayer; 
+//	long lReturn=0;
+//	cublasStatus csStatus;
+//	
+//	// complex weights
+//	for (int i=1; i < rSes.rNet->iLayerQty; ++i){  //Layer Zero has no need of weights! 8/13/2010
+//		struct rohanLayer& lay = rSes.rNet->rLayer[i];
+//		//allocate a GPU-space pointer to a matrix of neurons x weights for each layer
+//		csStatus=cublasAlloc((lay.iNeuronQty+1)*(lay.iDendriteQty+1), sizeof(cuDoubleComplex), (void**)&lay.gpuWeights);
+//			mCuMsg(csStatus,"cublasAlloc()")
+//		//allocate a GPU-space pointer to a matrix of reversed neuron weights for each layer
+//		csStatus=cublasAlloc((lay.iNeuronQty+1)*(lay.iDendriteQty+1), sizeof(cuDoubleComplex), (void**)&lay.gpuUnWeights);
+//			mCuMsg(csStatus,"cublasAlloc()")	
+//	}
+//	// complex outputs
+//	for (int i=0; i < rSes.rNet->iLayerQty; ++i){
+//			struct rohanLayer& lay = rSes.rNet->rLayer[i];
+//		lReturn+=lay.iNeuronQty;
+//		//allocate a GPU-space pointer to a vector of complex neuron outputs for each layer
+//		csStatus=cublasAlloc(lay.iNeuronQty+1, sizeof(cuDoubleComplex), (void**)&lay.gpuZOutputs); 
+//			mCuMsg(csStatus,"cublasAlloc()")
+//		//allocate a GPU-space pointer to a vector of complex error corrections for each layer
+//		csStatus=cublasAlloc(lay.iNeuronQty+1, sizeof(cuDoubleComplex), (void**)&lay.gpuDeltas); 
+//			mCuMsg(csStatus,"cublasAlloc()")
+//	}
+//	return lReturn; //return how many weights and outputs allocated
+//}
+//
+//int cuMakeNNStructures(struct rohanContext &rSes)
+//{mIDfunc
+///*! Initializes a neural network structure of the given number of layers and
+// *  layer populations, allocates memory, and populates the set of weight values randomly.
+// *
+// * iLayerQty = 3 means Layer 1 and Layer 2 are "full" neurons, with output-only neurons on layer 0.
+// * 0th neuron on each layer is a stub with no inputs and output is alawys 1+0i, to accomodate internal weights of next layer.
+// * This allows values to be efficiently calculated by referring to all layers and neurons identically.
+// * 
+// * iNeuronQty[1] is # of neurons in Layer 1
+// * iNeuronQty[2] is # of neurons in Layer 2
+// * iNeuronQty[0] is # of inputs in Layer 0 */
+//	//int iUnderLayer; 
+//	long lReturn=0;
+//	cublasStatus csStatus;
+//	cuDoubleComplex cdcInit;
+//	// complex weights
+//	for (int i=1; i < rSes.rNet->iLayerQty; ++i){  //Layer Zero has no need of weights! 8/13/2010
+//		struct rohanLayer& lay = rSes.rNet->rLayer[i];
+//		//allocate a pointer to an array of weights (2d unrolled to 1d)
+//		lay.cdcWeights=(cuDoubleComplex*)malloc((lay.iNeuronQty+1) * (lay.iDendriteQty+1) * sizeof(cuDoubleComplex));
+//			mCheckMallocWorked(lay.cdcWeights)
+//		/*lay.cdcWeights=(cuDoubleComplex**)malloc((lay.iNeuronQty+1) * sizeof(cuDoubleComplex*));
+//			mCheckMallocWorked(lay.cdcWeights)*/
+//		lReturn+=lay.iNeuronQty*lay.iDendriteQty;
+//   		for (int j=0; j <= lay.iNeuronQty; ++j){ 
+//			//lay.cdcWeights[j] = (cuDoubleComplex*)malloc((lay.iDendriteQty+1) * sizeof (cuDoubleComplex)); //allocate a pointer to an array of weights
+//			//	mCheckMallocWorked(lay.cdcWeights[j])
+//			for (int k=0; k <= lay.iDendriteQty; ++k){
+//				lay.cdcWeights[IDX2C(j, k, lay.iNeuronQty+1)].x=(double)rand()/65535; // necessary to promote one operand to double to get a double result
+//				lay.cdcWeights[IDX2C(j, k, lay.iNeuronQty+1)].y=(double)rand()/65535; // necessary to promote one operand to double to get a double result
+//			}
+//		}
+//		// reset neuron 0 weights to null
+//		for (int k=0; k <= lay.iDendriteQty; ++k){
+//			lay.cdcWeights[IDX2C(0, k, lay.iNeuronQty+1)].x=0;
+//			lay.cdcWeights[IDX2C(0, k, lay.iNeuronQty+1)].y=0;
+//		}
+//		lay.cdcWeights[IDX2C(0, 0, lay.iNeuronQty+1)].x=1; // neuron 0 interior weight should always be equal to 1
+//
+//		// allocation loops repeated separately in hopes of eliminating a memory frag problem causing cublasGetMatrix to cdcAltWeights to mangle both 5/23/11
+//		// This was successful!!! 5.23.11
+//		//lay.cdcAltWeights=(cuDoubleComplex**)malloc((lay.iNeuronQty+1) * sizeof(cuDoubleComplex*));  //allocate a pointer to an array of weights for comparison purposes
+//		//	mCheckMallocWorked(lay.cdcAltWeights)
+//		//for (int j=0; j <= lay.iNeuronQty; ++j){ 
+//		//	lay.cdcAltWeights[j] = (cuDoubleComplex*)malloc((lay.iDendriteQty+1) * sizeof (cuDoubleComplex)); //allocate a pointer to an array of weights for comparison purposes
+//		//		mCheckMallocWorked(lay.cdcAltWeights[j])
+//		//}
+//		lay.cdcAltWeights=(cuDoubleComplex*)malloc((lay.iNeuronQty+1) * (lay.iDendriteQty+1) * sizeof(cuDoubleComplex));  //allocate a pointer to an array of weights for comparison purposes
+//			mCheckMallocWorked(lay.cdcAltWeights)
+//		//allocate a GPU-space pointer to a matrix of neurons x weights for each layer
+//		csStatus=cublasAlloc((lay.iNeuronQty+1)*(lay.iDendriteQty+1), sizeof(cuDoubleComplex), (void**)&lay.gpuWeights);
+//			mCuMsg(csStatus,"cublasAlloc()")
+//		//allocate a GPU-space pointer to an inverted matrix of reciprocal values for each layer
+//		csStatus=cublasAlloc((lay.iNeuronQty+1)*(lay.iDendriteQty+1), sizeof(cuDoubleComplex), (void**)&lay.gpuUnWeights);
+//			mCuMsg(csStatus,"cublasAlloc()")
+//	}
+//	// complex outputs
+//	cdcInit.x=-999; cdcInit.y=999;
+//	for (int i=0; i < rSes.rNet->iLayerQty; ++i){
+//			struct rohanLayer& lay = rSes.rNet->rLayer[i];
+//		lay.cdcZOutputs = (cuDoubleComplex*)malloc((lay.iNeuronQty+1) * sizeof (cuDoubleComplex)); //allocate a pointer to an array of outputs
+//			mCheckMallocWorked(lay.cdcZOutputs)
+//		lay.cdcZAltOutputs = (cuDoubleComplex*)malloc((lay.iNeuronQty+1) * sizeof (cuDoubleComplex)); //allocate a pointer to an alternate array of outputs for comparison
+//			mCheckMallocWorked(lay.cdcZAltOutputs)
+//		lay.cdcDeltas = (cuDoubleComplex*)malloc((lay.iNeuronQty+1) * sizeof (cuDoubleComplex)); //allocate a pointer to an parallel array of learned corrections
+//			mCheckMallocWorked(lay.cdcDeltas)
+//		lay.cdcAltDeltas = (cuDoubleComplex*)malloc((lay.iNeuronQty+1) * sizeof (cuDoubleComplex)); //allocate a pointer to an alternate array of learned corrections
+//			mCheckMallocWorked(lay.cdcAltDeltas)
+//		lReturn+=lay.iNeuronQty;
+//		for (int j=0; j <= lay.iNeuronQty; ++j){
+//			lay.cdcZOutputs[j]=lay.cdcZAltOutputs[j]=lay.cdcDeltas[j]=lay.cdcAltDeltas[j]=cdcInit;
+//		}
+//		//allocate a GPU-space pointer to a vector of complex neuron outputs for each layer
+//		csStatus=cublasAlloc(lay.iNeuronQty+1, sizeof(cuDoubleComplex), (void**)&lay.gpuZOutputs); 
+//			mCuMsg(csStatus,"cublasAlloc()")
+//	}
+//	return lReturn; //return how many weights and outputs allocated
+//}
+
+//int devCopySectorTable(struct rohanContext &rSes)
+//{mIDfunc /// allocate and populate an array of complex coordinates for sectors on the unit circle of the complex plane
+//	cublasStatus csStatus;
+//
+//	csStatus=cublasAlloc(rSes.rNet->iSectorQty, sizeof(cuDoubleComplex), (void**)&(rSes.rNet->gpuSectorBdry));
+//			mCuMsg(csStatus,"cublasAlloc()")
+//	csStatus=cublasSetVector(rSes.rNet->iSectorQty, sizeof(cuDoubleComplex), rSes.rNet->cdcSectorBdry, 1, rSes.rNet->gpuSectorBdry, 1);
+//		mCuMsg(csStatus,"cublasSetVector()") // and copies back to CPU again for comparison
+//	return rSes.rNet->iSectorQty;
+//}
+
+//int cuSectorTableMake(struct rohanContext &rSes)
+//{mIDfunc /// allocate and populate an array of complex coordinates for sectors on the unit circle of the complex plane
+//	double two_pi_div_sect_qty = TWO_PI/rSes.rNet->iSectorQty;
+//
+//	rSes.rNet->cdcSectorBdry=(cuDoubleComplex*)malloc(rSes.rNet->iSectorQty * sizeof (cuDoubleComplex)); //point to array of cdc's
+//		mCheckMallocWorked(rSes.rNet->cdcSectorBdry)
+//	rSes.rNet->cdcAltSectorBdry=(cuDoubleComplex*)malloc(rSes.rNet->iSectorQty * sizeof (cuDoubleComplex)); //point to array of cdc's
+//		mCheckMallocWorked(rSes.rNet->cdcAltSectorBdry)
+//	for (int s=0; s<rSes.rNet->iSectorQty; ++s) {
+//		rSes.rNet->cdcSectorBdry[s].x=cos(s*two_pi_div_sect_qty);
+//		rSes.rNet->cdcSectorBdry[s].y=sin(s*two_pi_div_sect_qty);
+//		rSes.rNet->cdcAltSectorBdry[s]=cdcIdentity;
+//	}
+//	return rSes.rNet->iSectorQty;
+//}
+
+int CurateSectorValue(struct rohanContext& rSes)
+{mIDfunc /// compares sector qty to sample values for adequate magnitude
+	int iOverK=0;
+	for (long s=0; s<rSes.rLearn->lSampleQty; ++s)
+		for (int i=1; i<rSes.rLearn->iValuesPerLine; ++i)
+			if(rSes.rLearn->rSample[s].dXInputs[i]>=rSes.rNet->iSectorQty){
+				fprintf(stderr, "Error: Sample #%d has value that exceeds sector qty %d; suggest increasing to %d!\n", s, rSes.rNet->iSectorQty, static_cast<int>(floor(rSes.rLearn->rSample[s].dXInputs[i]*1.33)+1));
+				++iOverK;
+			}
+	if (iOverK)	{
+		++rSes.iErrors;
+		return 0;
+	}
+	return rSes.rLearn->lSampleQty; // return number of samples veified within parameters
+}
+
+//long cuRandomizeWeights(struct rohanContext &rSes)
+//{mIDfunc /// generates random weights in [0..1]
+//	long lReturnValue=0;
+//
+//	for (int i=1; i < rSes.rNet->iLayerQty; ++i){ //no weights for layer 0
+//		struct rohanLayer& lay = rSes.rNet->rLayer[i];
+//		// set neuron 0 's weights to nil
+//		for (int k=1; k <= lay.iDendriteQty; ++k){
+//			lay.cdcWeights[IDX2C(0, k, lay.iNeuronQty+1)].x=0;
+//			lay.cdcWeights[IDX2C(0, k, lay.iNeuronQty+1)].y=0;
+//		}
+//		lay.cdcWeights[IDX2C(0, 0, lay.iNeuronQty+1)].x=1; // NZero interior weight should always be equal to 1+0i
+//		lay.cdcWeights[IDX2C(0, 0, lay.iNeuronQty+1)].y=0;
+//		for (int j=1; j <= lay.iNeuronQty; ++j){ // weights for neurons 1+
+//			for (int k=0; k <= lay.iDendriteQty; ++k){
+//				cuDoubleComplex& way = lay.cdcWeights[IDX2C(j, k, lay.iNeuronQty+1)];
+//				way.x=(double)rand()/RAND_MAX;
+//				way.y=(double)rand()/RAND_MAX;
+//				++lReturnValue;
+//			}
+//		}
+//	}
+//	printf("%d random weights on [0..1]\n",lReturnValue);
+//	cuResetAllDeltasAndOutputs(rSes);
+//	return lReturnValue;
+//}
+//long dualRandomizeWeights(struct rohanContext &rSes)
+//{mIDfunc /// generates random weights in [0..1]
+//	cublasStatus csStatus;
+//	long lReturnValue=0;
+//
+//	for (int i=1; i < rSes.rNet->iLayerQty; ++i){ //no weights for layer 0
+//		struct rohanLayer& lay = rSes.rNet->rLayer[i];
+//		// set neuron 0 's weights to nil
+//		for (int k=1; k <= lay.iDendriteQty; ++k){
+//			lay.cdcWeights[IDX2C(0, k, lay.iNeuronQty+1)].x=0;
+//			lay.cdcWeights[IDX2C(0, k, lay.iNeuronQty+1)].y=0;
+//		}
+//		lay.cdcWeights[IDX2C(0, 0, lay.iNeuronQty+1)].x=1; // NZero interior weight should always be equal to 1+0i
+//		lay.cdcWeights[IDX2C(0, 0, lay.iNeuronQty+1)].y=0;
+//		for (int j=1; j <= lay.iNeuronQty; ++j){ // weights for neurons 1+
+//			for (int k=0; k <= lay.iDendriteQty; ++k){
+//				cuDoubleComplex& way = lay.cdcWeights[IDX2C(j, k, lay.iNeuronQty+1)];
+//				way.x=(double)rand()/RAND_MAX;
+//				way.y=(double)rand()/RAND_MAX;
+//				++lReturnValue;
+//			}
+//		}
+//		csStatus=cublasSetMatrix(lay.iNeuronQty+1, lay.iDendriteQty+1, sizeof(cuDoubleComplex),
+//			lay.cdcWeights, lay.iNeuronQty+1, lay.gpuWeights, lay.iNeuronQty+1);
+//			mCuMsg(csStatus,"cublasSetMatrix()")
+//		
+//	}
+//	printf("%d random weights on [0..1] generated and transferred.\n",lReturnValue);
+//	cuResetAllDeltasAndOutputs(rSes);
+//	devResetAllDeltasAndOutputs(rSes);
+//	return lReturnValue;
+//}
+
+
+cuDoubleComplex CxActivate(const cuDoubleComplex Z, struct rohanContext& rSes)
+{/// applies ContActivation or discrete activation function to cx neuron output and returns Phi(Z)
+	/// This fn should be phased out in favor of a GPU device vector based fn
+	cuDoubleComplex phi;
+	if (rSes.bContActivation) { // apply ContActivation activation function to weighted sum : phi(z)=z/|z|
+					phi = CxDivideRl( Z, CxAbs( Z ) );
+	}
+	else {	// apply Discrete activation function to weighted sum : s=int(arctan(z)*k/2pi), phi(z)=(X(s),Y(s))
+					double theta = atan2(Z.y, Z.x); // theta = arctan y/x
+					int iSector = (int)((theta * rSes.rNet->dK_DIV_TWO_PI) + rSes.rNet->iSectorQty) % rSes.rNet->iSectorQty;
+					phi = rSes.rNet->cdcSectorBdry[iSector];
+	}
+	return phi;
+}
+
+
+long cuConvertInputs(struct rohanContext& rSes, long lSample)
+{mIDfunc /// converts sample inputs to complex NN input layer values
+	/// layer zero (inputs) is special
+	/// virtual input neurons' outputs are network inputs converted to complex coords
+	long s=lSample; //replace for-loop domain with requested sample index
+	struct rohanLayer& lay = rSes.rNet->rLayer[0];
+	struct rohanSample& sam = rSes.rLearn->rSample[s];
+	
+	for (int i=0; i<=lay.iNeuronQty; ++i)
+		lay.cdcZOutputs[i]=sam.cdcXInputs[i];
+	return lSample;
+}
+
+
+long cuEvalMidTopLayers(struct rohanContext& rSes, long lSample)
+{mIDfunc/// number crunches the middle and top layers of an MLMVN 
+
+	long s=lSample; //replace for-loop domain with requested sample index
+	int iLastLayer=rSes.rNet->iLayerQty-1;
+	for (int L=1; L<rSes.rNet->iLayerQty; ++L){
+		struct rohanLayer& lay = rSes.rNet->rLayer[L];
+		int iLastNeuron=rSes.rNet->rLayer[L].iNeuronQty; // size of current layer
+		int PL=L-1; // index of previous layer
+		int iLastWeight=rSes.rNet->rLayer[L].iDendriteQty; // weight qty depends on size of previous layer
+			cuDoubleComplex*& wt = rSes.rNet->rLayer[L].cdcWeights;
+			cuDoubleComplex*& oldOut = rSes.rNet->rLayer[PL].cdcZOutputs;
+			cuDoubleComplex*& newOut = rSes.rNet->rLayer[L].cdcZOutputs;
+		for (int i=0; i<=iLastNeuron; ++i){ //Neuron zero is not skipped, its output should be 1+0i as a check
+			newOut[i]=cdcZero;
+			for (int j=0; j<=iLastWeight; ++j){ //walk weights on inputs from previous layer
+				newOut[i]=CxAddCx(newOut[i],CxMultiplyCx(wt[IDX2C(i, j, lay.iNeuronQty+1)], oldOut[j]));
+			}
+			// ACTIVATE //
+			newOut[i]=CxActivate(newOut[i],rSes);
+		}
+	}
+	return lSample;
+}
+
+
+long devOutputConvert(struct rohanContext& rSes, long lSample)
+{mIDfunc/*! converts complex NN output layer values to evaluated sample outputs 
+	* Typically called immediately after FFE on GPU is complete.
+	* top.gpuZOutputs are activated cx signals that need to be stored:
+	*		with the sample as cx (sam.gpuYEval) and
+	*		converted scalar outputs (sam.gpudYEval), and with the learning set as 
+	*		lengthwise scalar (rLearn.gpuYScalar).
+	*/
+	//cublasStatus csStatus;
+	rSes.rLearn->lSampleIdxReq=lSample; //replace for-loop domain with requested sample index
+	
+	struct rohanSample& sam = rSes.rLearn->rSample[rSes.rLearn->lSampleIdxReq];
+	struct rohanLayer& top = rSes.rNet->rLayer[rSes.rNet->iLayerQty-1];
+
+	/*csStatus=cublasGetVector(top.iNeuronQty+1, sizeof(cuDoubleComplex), top.gpuZOutputs, 1, sam.cdcAltYEval, 1);
+		mCuMsg(csStatus,"cublasGetVector()")*/
+	
+	knlOutputConvert(rSes);
+		/*/// copy real values from GPU to host memory space
+	
+	csStatus=cublasGetVector(top.iNeuronQty+1, sizeof(cuDoubleComplex), sam.gpudYEval, 1, top.cdcZAltOutputs, 1);
+		mCuMsg(csStatus,"cublasGetVector()")
+	/// copy real values to final resting place
+	for (int i=0; i<=rSes.rLearn->iOutputQty; ++i){
+		sam.dAltYEval[i]=top.cdcZAltOutputs[i].x;
+		}*/
+	
+
+	return lSample;
+}
+
+long cuOutputConvert(struct rohanContext& rSes, long lSample)
+{mIDfunc/// converts complex NN output layer values to evaluated sample outputs 
+	long s=lSample; //replace for-loop domain with requested sample index
+	int iLastLayer=rSes.rNet->iLayerQty-1;
+	struct rohanSample& sam = rSes.rLearn->rSample[s];
+	struct rohanLayer& top = rSes.rNet->rLayer[iLastLayer];
+	
+	if (rSes.rLearn->iContOutputs)
+		for (int i=0; i<=rSes.rLearn->iOutputQty; ++i){ // continuous conversion begins here 
+			sam.dYEval[i]=FUnitCx(top.cdcZOutputs[i])*rSes.rNet->iSectorQty; // cx output is converted to angle [0,1), then multiplied by k, then stored with sample
+			sam.cdcYEval[i]=top.cdcZOutputs[i]; // unactivated cx output is also stored with sample
+		}
+	else
+		for (int i=0; i<=rSes.rLearn->iOutputQty; ++i){ // discrete conversion starts here
+			sam.dYEval[i]=(double)floor(FUnitCx(top.cdcZOutputs[i])*rSes.rNet->iSectorQty); // cx output is converted to angle and mul;tiplied by k, but then the fraciton is dropped before storing
+			sam.cdcYEval[i]=top.cdcZOutputs[i];
+		}
+	return lSample;
+}
+
+long devEvalNNLearnSet(struct rohanContext& rSes)
+{mIDfunc
+/*! This will apply a MLMVN weight set to each sample of a learning set in turn and record the resulting final output for each.
+ *  Discrete inputs and outputs are used. Real integers are convered via K-valued logic to complex coordinates,
+ *  which are then product-summed by successive layers of neurons, then conveted back to integer output
+ *  
+ *  IMPORTANT: keep this code consistent with cuEvalSingleOutput in rohan-learn.cpp 
+ */
+	long lSamplesEvaled=0;
+	// sample index, counts up
+	double two_pi_div_sect_qty = TWO_PI/rSes.rNet->iSectorQty;
+	if (rSes.lSampleQtyReq<=0 || rSes.lSampleQtyReq>rSes.rLearn->lSampleQty)
+		rSes.lSampleQtyReq=rSes.rLearn->lSampleQty;
+	// here beginneth ye main duty loop
+	for (long s=0; s<rSes.lSampleQtyReq; ++s){
+		struct rohanSample& sam = rSes.rLearn->rSample[s];
+		lSamplesEvaled+=devEvalSingleSample(rSes, s);
+		//lSamplesEvaled+=dualEvalSingleSample(rSes, s);
+		//lSamplesEvaled+=knlEvalSingleSample(rSes, rSes.rLearn, rSes.rNet, s);
+	// end of main duty loop, go back for the next sample
+	}
+	//ShowMeLS(rSes,false)+ShowMeWS(rSes,true);
+	return lSamplesEvaled; // return qty samples evaluated
+}
+
+long cuEvalNNLearnSet(struct rohanContext& rSes)
+{mIDfunc
+/*! This will apply a MLMVN weight set to each sample of a learning set in turn and record the resulting final output for each.
+ *  Discrete inputs and outputs are used. Real integers are convered via K-valued logic to complex coordinates,
+ *  which are then product-summed by successive layers of neurons, then conveted back to integer output
+ *  
+ *  IMPORTANT: keep this code consistent with cuEvalSingleOutput in rohan-learn.cpp 
+ */
+	long lSamplesEvaled=0;
+	// sample index, counts up
+	double two_pi_div_sect_qty = TWO_PI/rSes.rNet->iSectorQty;
+	if (rSes.lSampleQtyReq<=0 || rSes.lSampleQtyReq>rSes.rLearn->lSampleQty)
+		rSes.lSampleQtyReq=rSes.rLearn->lSampleQty;
+	// here beginneth ye main duty loop
+	//printf("cuIteration over %d samples\n", rSes.lSampleQtyReq);
+	for (long s=0; s<rSes.lSampleQtyReq; ++s){
+		//struct rohanSample& sam = rSes.rLearn->rSample[s];
+		lSamplesEvaled+=cuEvalSingleSample(rSes, s);
+	// end of main duty loop, go back for the next sample
+	}
+	return lSamplesEvaled; // return qty samples evaluated
+}
+//
+//int cuFreeNNTop(struct rohanContext &rSes)
+//{mIDfunc/// frees data structures related to network topology
+//	cublasStatus csStatus;
+//	
+//	free( rSes.rNet->cdcSectorBdry );
+//	// layer components
+//	free( rSes.rNet->rLayer[0].cdcZOutputs ); // Layer Zero has no need of weights!
+//	csStatus = cublasFree( rSes.rNet->rLayer[0].gpuZOutputs ); // de-allocate a GPU-space pointer to a vector of complex neuron outputs for each layer
+//	mCuMsg(csStatus,"cublasFree()")
+//	
+//	for (int i=1; i < rSes.rNet->iLayerQty; ++i){ 
+//		struct rohanLayer& lay=rSes.rNet->rLayer[i];
+//		//for (int j=0; j <= lay.iNeuronQty; ++j){ // Virtual Neuron Zero preceeds adjustable weight neurons
+//			//free( lay.cdcWeights[j] ); // de-allocate a pointer to an array of weights
+//			//free( lay.cdcAltWeights[j] ); // de-allocate a pointer to an array of weights
+//		//}
+//		free( lay.cdcWeights ); // de-allocate a pointer to an array of arrays of weights
+//		free( lay.cdcAltWeights ); // de-allocate a pointer to an array of arrays of weights
+//		free( lay.cdcDeltas ); // free the backprop areas
+//		//free( lay.cdcZOutputs ); // free the outputs
+//		//free( lay.cdcLinearWeights );
+//		csStatus = cublasFree( lay.gpuWeights ); // de-allocate a GPU-space pointer to a matrix of neurons x weights for each layer
+//		mCuMsg(csStatus,"cublasFree()");
+//		csStatus = cublasFree( lay.gpuZOutputs ); // de-allocate a GPU-space pointer to a vector of complex neuron outputs for each layer
+//		mCuMsg(csStatus,"cublasFree()");
+//		csStatus = cublasFree( lay.gpuDeltas);
+//		mCuMsg(csStatus,"cublasFree()");
+//		csStatus = cublasFree( lay.gpuUnWeights);
+//		mCuMsg(csStatus,"cublasFree()");
+//	}
+//	free( rSes.rNet->rLayer ); // free empty layers
+//	printf("Network structures freed.\n");
+//	return 0;
+//}
+
+//int cuFreeLearnSet(struct rohanContext &rSes)
+//{mIDfunc/// free the learning set of samples
+//	
+//	for (long s=0; s<rSes.rLearn->lSampleQty; ++s){ // iterate over the number of samples
+//		struct rohanSample& sam = rSes.rLearn->rSample[s]; 
+//		free( sam.dXInputs ); free( sam.dTOutputs );
+//		free( sam.dYEval ); free( sam.dAltYEval ); free( sam.cdcYEval ); free( sam.cdcAltYEval );
+//		free( sam.cdcXInputs ); free( sam.cdcAltXInputs );
+//		free( sam.cdcDOutputs ); free( sam.cdcAltDOutputs );
+//		cublasFree( sam.gpuXInputs );
+//		cublasFree( sam.gpuDOutputs ); 
+//		cublasFree( sam.gpudYEval ); 
+//		cublasFree( sam.gpuYEval ); 
+//	}
+//	free( rSes.rLearn->rSample );
+//	cublasFree( rSes.rLearn->gpudSE1024 );
+//	printf("Learning set structures freed.\n");
+//
+//	return 0;
+//}
+
+//int cuFree(struct rohanContext &rSes)
+//{mIDfunc/// free allocated memory for all structures
+//	
+//	cuFreeNNTop(rSes); // free network topology structures
+//	cuFreeLearnSet(rSes); // free learning set structures
+//	
+//	return 0;
+//}

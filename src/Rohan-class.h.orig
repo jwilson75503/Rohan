@@ -1,0 +1,115 @@
+#ifndef ROHAN_CLASS_H
+#define ROHAN_CLASS_H
+
+#include "Rohan.h"
+#include "ShowMe.h"
+
+class cTeam /// for subclassing only, never instantiated in itself
+{
+		struct rohanContext * rSes;
+		struct rohanLearningSet * rLearn;
+		struct rohanNetwork * rNet;
+		class cBarge * Barge /*! The data-holding "object" currently in use. */;
+		class cDrover * Drover /*! The user-agent "driver" currently in use. */;
+	public:
+		long SetContext( struct rohanContext& rSes); // completed
+		long SetNetwork( struct rohanNetwork& rNet); // completed
+		long SetSamples( struct rohanLearningSet& rLearn); // completed
+		long SetDrover( class cDrover * cdDrover); // completed
+		long SetBarge( class cBarge * cbBarge); //completed
+		long GetTrainables( struct rohanContext& rSes, long lSampleQtyReq);
+		double GetRmseNN( struct rohanContext& rSes, long lSampleQtyReq); // 
+		long GetEvalSingleSample( struct rohanContext& rSes, long lSampleIdxReq); /// implemented in cHostTeam, cDeviceTeam
+		long DoTrainNNThresh( rohanContext& rSes, long lSampleQtyReq); // completed
+		long DoBackpropSingleSample( rohanContext& rSes, long lSampleIdxReq); /// implemented in cHostTeam, cDeviceTeam
+		long SaveContext(int iMode);
+		long SaveWeights(int iMode);
+		long SaveEvaluation(int iMode);
+	//private:
+};
+
+class cHostTeam: public cTeam // cTeam members available at their original access
+{/// A mule team, slow but sure; serial calculations run on the CPU
+	public:
+		cHostTeam( struct rohanContext& rSes){ SetContext(rSes); ShowMe(); } ; // end ctor
+		void ShowMe() /*! diagnostic identity display on screen */;
+		long GetEvalSingleSample( struct rohanContext& rSes, long lSampleIdxReq) /*! calculates NN outputs for a given sample wuth serial method */;
+		long DoBackpropSingleSample( rohanContext& rSes, long lSampleIdxReq) /*! procedure for training weights with MAX criterion */;
+		long DoTrainNNThresh( rohanContext& rSes, long lSampleQtyReq);
+};
+
+class cDeviceTeam: public cTeam // cTeam members available at their original access
+{/// A team of mighty stallions; parallel calculations in CUDA C running on the GPU
+	public:
+		cDeviceTeam( struct rohanContext& rSes){ SetContext(rSes); ShowMe(); } ; // end ctor
+		void ShowMe() /*! diagnostic identity display on screen */;
+		long GetEvalSingleSample( struct rohanContext& rSes, long lSampleIdxReq) /*! calculates NN outputs for a given sample wuth GPU method */;
+		long DoBackpropSingleSample( rohanContext& rSes, long lSampleIdxReq) /*! procedure for training weights with MAX criterion */;
+		long DoTrainNNThresh( rohanContext& rSes, long lSampleQtyReq);
+};
+
+class cBarge
+{/// Represents the load of data upon which the computational work is to be performed.
+		struct rohanContext * rSes;
+		struct rohanLearningSet * rLearn;
+		struct rohanNetwork * rNet;
+		class cDrover * Drover /*! The user-agent "driver" currently in use. */;
+		class cTeam * Team /*! The calculating "engine" currently in use. */;
+	public:
+		cBarge( struct rohanContext& rSes){ SetContext(rSes); ShowMe(); } ; // end ctor
+		void ShowMe();
+		long SetContext( struct rohanContext& rSes); // completed
+		long SetDrover( class cDrover * cdDrover); // completed
+		long SetTeam( class cTeam * ctTeam); // completed
+		long ObtainSampleSet(struct rohanContext& rSes); /// chooses and loads the learning set to be worked with Ante-Loop
+		long ObtainNNTop(struct rohanContext& rSes); /// sets up network poperties and data structures for use
+		long DoCuPrepareNetwork(struct rohanContext& rSes); /// sets up network properties and data structures for use in host memory space
+		long DoPrepareNetwork(struct rohanContext& rSes); /// sets up network poperties and data structures for use
+		long DoCuMakeLayers(int iInputQty, char *sLayerSizes, struct rohanContext& rSes); /// Parses a string to assign network architecture parameters for use by later functions. 
+		long DoCuMakeNNStructures(struct rohanContext& rSes);
+		long DoCuSectorTableMake(struct rohanContext& rSes);
+		long DoCuRandomizeWeights(struct rohanContext& rSes);
+		long DoCuFreeNNTop(struct rohanContext& rSes);
+		long DoCuFreeLearnSet(struct rohanContext& rSes);
+		long DoCuFree(struct rohanContext &rSes);
+		long DoDevCopyNNStructures(struct rohanContext& rSes);
+		long DoDevCopySectorTable(struct rohanContext& rSes);
+		long DoDualRandomizeWeights(struct rohanContext& rSes);
+		long DoDevPrepareNetwork(struct rohanContext& rSes); /// sets up network properties and data structures for use in GPU memory space
+
+};
+
+class cDrover
+{/// Provisional name for Controller/UI handler.
+		struct rohanContext * rSes;
+		class cBarge * Barge /*! The data-holding "object" currently in use. */;
+		class cTeam * Team /*! The calculating "engine" currently in use. */;
+	public:
+		cDrover( struct rohanContext& rSes){ SetContext(rSes); ShowMe(); } ; // end ctor
+		void ShowMe();
+		long SetContext( struct rohanContext& rSes); // completed
+		long SetDroverBargeAndTeam( class cDrover * cdDrover, class cBarge * cbBarge, class cTeam * ctTeam); // completed
+		long ObtainGlobalSettings(struct rohanContext& rSes); /// sets initial and default value for globals and settings
+		long DoAnteLoop(int argc, char * argv[],  class cDrover * cdDrover, class cBarge * cbBarge, class cTeam * ctTeam); /// preps all params, contexts, amd data structures necesary for learning and evaluation.
+		long DoMainLoop(struct rohanContext& rSes); /// Trains a weight set to more closely reproduce the sampled outputs from the sampled inputs, and other options.
+		long DoPostLoop(struct rohanContext& rSes); /// Final operations including freeing of dynamically allocated memory are called from here. 
+		long DoEndItAll(struct rohanContext& rSes); /// prepares for graceful ending of program
+};
+
+//int AnteLoop(struct rohanContext& rSes, int argc, char * argv[]);
+int GetGlobalSettings(struct rohanContext& rSes);
+int BeginSession(struct rohanContext& rSes);
+int GetNNTop(struct rohanContext& rSes);
+int GetWeightSet(struct rohanContext& rSes);
+int GetSampleSet(struct rohanContext& rSes);
+int ReGetSampleSet(struct rohanContext& rSes);
+int PrepareNetwork(struct rohanContext& rSes);
+//void MainLoop(struct rohanContext& rSes);
+int ShowDiagnostics(struct rohanContext& rSes);
+int SilentDiagnostics(struct rohanContext& rSes);
+int InteractiveEvaluation(struct rohanContext& rSes);
+int InteractiveLearning(struct rohanContext& rSes);
+//void PostLoop(struct rohanContext& rSes);
+
+
+#endif

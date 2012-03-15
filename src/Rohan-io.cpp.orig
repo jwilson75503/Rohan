@@ -1,0 +1,754 @@
+/* Includes, cuda */
+#include "cuda.h"
+#include "cublas.h"
+#include <iostream>
+using namespace std;
+#include "Rohan.h"
+#include "Rohan-data.h"
+#include "Rohan-learn.h"
+#include "ShowMe.h"
+#include <conio.h> //for _getch
+
+#define TWO_PI 6.283185307179586476925286766558
+#define IDX2C(i,j,ld) (((j)*(ld))+(i))
+
+extern int iDebugLvl, iWarnings, iErrors, iTrace;
+extern bool bCublasAvailable;
+
+int cuMessage(cublasStatus csStatus, char *sName, char *sCodeFile, int iLine, char *sFunc)
+{	
+	char *sMsg;
+
+	switch (csStatus) {
+		case CUBLAS_STATUS_SUCCESS: sMsg=_strdup("operation completed successfully");
+			break;
+		case CUBLAS_STATUS_NOT_INITIALIZED: sMsg=_strdup("library not initialized");
+			break;
+		case CUBLAS_STATUS_ALLOC_FAILED: sMsg=_strdup("resource allocation failed");
+			break;
+		case CUBLAS_STATUS_INVALID_VALUE: sMsg=_strdup("unsupported numerical value was passed to function");
+			break;
+		case CUBLAS_STATUS_ARCH_MISMATCH: sMsg=_strdup("function requires an architectural feature absent from the architecture of the device");
+			break;
+		case CUBLAS_STATUS_MAPPING_ERROR: sMsg=_strdup("access to GPU memory space failed");
+			break;
+		case CUBLAS_STATUS_EXECUTION_FAILED: sMsg=_strdup("GPU program failed to execute");
+			break;
+		case CUBLAS_STATUS_INTERNAL_ERROR: sMsg=_strdup("an internal operation failed");
+			break;
+		default: sMsg=_strdup("unknown response");
+	}
+	fprintf(stderr,"%s %s line %i: CUBLAS %s: %s\n", sCodeFile, sFunc, iLine, sMsg, sName);
+	return 0;
+}
+
+int CublasVerify(struct rohanContext& rSes)
+{mIDfunc/// Checks for prsence of CUDA-enabled hardware and correct response of Cublas functions.
+	cublasStatus csStatus;
+	csStatus=cublasInit();
+		mCuMsg(csStatus,"cublasInit()")
+	if(csStatus==CUBLAS_STATUS_ALLOC_FAILED) { 
+		rSes.bCublasAvailable=false;
+		++rSes.iWarnings;
+		printf("CUBLAS resources could not be allocated\n"); 
+		}
+	else {
+		rSes.bCublasAvailable=true;
+		//printf("CUBLAS resources allocated\n");
+	}
+
+	if(rSes.bCublasAvailable)
+		return 1; // available
+	else
+		return 0; // not available
+}
+
+
+int BinaryFileHandleRead(char* sFileName, FILE** fileInput)
+{mIDfunc/// Opens a file for reading in binary mode, typically a .wgt weight file.
+	*fileInput = fopen(sFileName, "rb");  /* Open in BINARY mode */
+	if (*fileInput == NULL) {
+		fprintf(stderr, "Error opening %s for reading.\n", sFileName);
+		return 0;
+	}
+	else return 1;
+}
+
+int AsciiFileHandleRead(char *sFileName, FILE **fileInput)
+{mIDfunc/// Opens a file for reading in ASCII mode, typically the .txt learning set file.
+	*fileInput = fopen(sFileName, "r");  /* Open in ASCII mode */
+	if (*fileInput == NULL) {
+		fprintf(stderr, "Error opening %s for reading.\n", sFileName);
+		return 0;
+	}
+	else return 1;
+}
+
+int AsciiFileHandleWrite(char *sFileName, FILE **fileOutput)
+{mIDfunc/// Opens a file for writing in ASCII mode, typically top record results of a learning sewssion and/or to save human-readable weight values.
+	*fileOutput = fopen(sFileName, "w");  /* Open in ASCII mode */
+	if (*fileOutput == NULL) {
+		fprintf(stderr, "Error opening %s for writing.\n", sFileName);
+		return 0;
+	}
+	else return 1;
+}
+
+//int cuMakeLayers(int iInputQty, char *sLayerSizes, struct rohanContext& rSes)
+//{mIDfunc
+///// Parses a string to assign network architecture parameters for use by later functions. 
+///// Returns neurons in last layer if successful, otherwise 0
+//	char *sArchDup, *sDummy;
+//	int iLayerQty=1;
+//
+//	sArchDup = _strdup(sLayerSizes); // strtok chops up the input string, so we must make a copy (or do we? - 6/15/10) (yes we do 8/22/10)
+//	sDummy = strtok (sArchDup, " ,\t");
+//	while (sDummy!=NULL) {// this loop counts the values present in a copy of sLayerSizes, representing neurons in each layer until a not-legal layer value is reached
+//		sDummy = strtok (NULL, " ,\t");
+//		++iLayerQty; //count layers
+//		//printf("%d-%s\n",iLayerQty, sDummy);
+//	}
+//	rSes.rNet->rLayer=(struct rohanLayer*)malloc(iLayerQty * sizeof (struct rohanLayer)); //point to array of layers
+//		mCheckMallocWorked(rSes.rNet->rLayer)
+//	printf("%d layers plus input layer allocated.\n", (iLayerQty-1));
+//	
+//	sArchDup=_strdup(sLayerSizes); // second pass
+//	sDummy = strtok(sArchDup, " ,\t");
+//	for (int i=0;i<iLayerQty;++i) {// this loop stores neurons in each layer
+//		//printf("%d-%s/%d\n",i, sDummy, atoi(sDummy));
+//		//printf ("%s Layer %d neurons %d\n",sDummy, i, rSes.rNet->rLayer[i].iNeuronQty);
+//		if (i) {
+//			rSes.rNet->rLayer[i].iNeuronQty = atoi(sDummy);
+//			rSes.rNet->rLayer[i].iDendriteQty=rSes.rNet->rLayer[i-1].iNeuronQty; //previous layer's neuron qty is dendrite qty
+//			sDummy = strtok (NULL, " ,\t");
+//		}
+//		else {
+//			rSes.rNet->rLayer[i].iNeuronQty = iInputQty; // layer zero has virtual neurons with outputs equal to inputs converted to phases
+//			rSes.rNet->rLayer[0].iDendriteQty=0; // layer zero has no dendrites
+//		}
+//		printf ("Layer %d: %d nodes\n", i, rSes.rNet->rLayer[i].iNeuronQty);
+//	}
+//	if (cuMakeNNStructures(rSes)) 
+//		printf("Nodes allocated.");
+//	return rSes.rNet->rLayer[rSes.rNet->iLayerQty-1].iNeuronQty;
+//}
+
+
+
+int cuMakeArchValues(char *sMLMVNarch, struct rohanContext& rSes)
+{mIDfunc/// Parses a string to assign network architecture parameters for use by later functions. 
+/// Returns neurons in last layer if successful, otherwise 0
+	char *sArchDup, *sDummy;
+	sArchDup = _strdup(sMLMVNarch); // strtok chops up the input string, so we must make a copy (or do we? - 6/15/10) (yes we do 8/22/10)
+	sDummy = strtok(sArchDup, " ,\t"); // first value is always # of samples, to be skipped
+	sDummy = strtok(NULL, " ,\t"); // second value is always # of sectors
+	rSes.rNet->iSectorQty = atoi(sDummy); 
+	rSes.rNet->dK_DIV_TWO_PI = rSes.rNet->iSectorQty / TWO_PI; // calc this now to prevents redundant conversion operations
+	rSes.rNet->iLayerQty = 0;
+	sDummy = strtok (NULL, " ,\t");
+	while (atoi(sDummy)) {// this loop counts the values present in a copy of cMLMVNarch, representing neurons in each layer until a not-legal layer value is reached
+		//printf ("%s\n",cDummy);
+		sDummy = strtok (NULL, " ,\t");
+		++rSes.rNet->iLayerQty; //count layers
+		mDebug(2,0) printf("%s %d layers \"%s", sDummy, rSes.rNet->iLayerQty, sMLMVNarch);
+	}
+	
+	rSes.rNet->rLayer=(struct rohanLayer*)malloc(rSes.rNet->iLayerQty * sizeof (struct rohanLayer)); //point to array of layers
+		mCheckMallocWorked(rSes.rNet->rLayer)
+	
+	if (sDummy!=NULL) {// check that there is another parameter, not just the end of the string
+		rSes.rNet->sWeightSet=_strdup(sDummy);
+		printf("Using weights in %s\n", rSes.rNet->sWeightSet);}
+	else{
+		printf("No weight set filename specificed, get from config file or cli args.\n");
+		rSes.rNet->sWeightSet="NOTFOUND";
+	}
+	sDummy = strtok (NULL, " ,\t");
+	if (sDummy!=NULL) {// check that there is another parameter, not just the end of the string
+		rSes.rNet->iWeightMode=atoi(sDummy);
+		printf("Weight mode %d specified\n", rSes.rNet->iWeightMode); }
+	else{
+		printf("No weight mode specificed, get from config file or cli args.\n");
+		rSes.rNet->iWeightMode=0;
+	}
+	
+	sArchDup=_strdup(sMLMVNarch); // second pass
+	sDummy = strtok(sArchDup, " ,\t"); // skip sample qty
+	sDummy = strtok(NULL, " ,\t"); // skip sector qty
+	//rSes.rNet->iLayerQty = 0;
+	int l=0;
+	sDummy = strtok (NULL, " ,\t");
+	while (atoi(sDummy)) {// this loop stores neurons in each layer, until it encounrs an invalid neuron qty
+		//printf ("%s %d\n",cDummy, iLayerQty);
+		//(*iNeuronQty)[*iLayerQty]=atoi(cDummy);
+		rSes.rNet->rLayer[l].iNeuronQty = atoi(sDummy);
+		if (l) rSes.rNet->rLayer[l].iDendriteQty=rSes.rNet->rLayer[l-1].iNeuronQty; //previous layer's neuron qty is dendrite qty
+		else rSes.rNet->rLayer[0].iDendriteQty=0; // layer zero has no dendrites
+		sDummy = strtok (NULL, " ,\t");
+		++l; //count layers
+	}
+	/*if(rSes.bCublasAvailable)
+		devCopyArchValues(rSes);*/
+	//for(int i=0;i<*iLayerQty;++i) printf("Layer %d Neurons %d\n", i, (*iNeuronQty)[i]);
+	mDebug(1,0) for (int i=0; i<rSes.rNet->iLayerQty; ++i) printf("%s line %d: layer %d neurons %d dendrites %d\n", __FILE__, __LINE__, i, rSes.rNet->rLayer[i].iNeuronQty, rSes.rNet->rLayer[i].iDendriteQty);
+	//return (*iNeuronQty)[(*iLayerQty)-1];
+	mDebug(1,0) printf("cuMakeArchValues returns.\n");
+	cout << "NN architecture made" << endl;
+	return rSes.rNet->rLayer[rSes.rNet->iLayerQty-1].iNeuronQty;
+}
+
+int devCopyArchValues(struct rohanContext& rSes)
+{mIDfunc/// Makes network structures in GPU memory that are parallel to those in host system memory
+	/// Returns neurons in last layer if successful, otherwise 0
+	cublasStatus csStatus;
+	for(int i=0;i<rSes.rNet->iLayerQty;++i){
+		struct rohanLayer& lay = rSes.rNet->rLayer[i];
+		// deallocate any existing structures
+		//if(lay.gpuWeights!=NULL){
+		//	csStatus = cublasFree( lay.gpuWeights );
+		//	mCuMsg(csStatus,"cublasFree()")
+		//}
+		//if(lay.gpuZOutputs!=NULL){
+		//	csStatus = cublasFree( lay.gpuZOutputs );
+		//	mCuMsg(csStatus,"cublasFree()")
+		//}
+		//if(lay.gpuDeltas!=NULL){
+		//	csStatus = cublasFree( lay.gpuDeltas );
+		//	mCuMsg(csStatus,"cublasFree()")
+		//}
+		//if(lay.gpuUnWeights!=NULL){
+		//	csStatus = cublasFree( lay.gpuUnWeights );
+		//	mCuMsg(csStatus,"cublasFree()")
+		//}
+		//allocate a GPU-space pointer to a matrix of neurons x weights for each layer
+		csStatus=cublasAlloc((lay.iNeuronQty+1)*(lay.iDendriteQty+1), sizeof(cuDoubleComplex), (void**)&lay.gpuWeights);
+			mCuMsg(csStatus,"cublasAlloc()");
+		//allocate a GPU-space pointer to a vector of complex neuron outputs for each layer
+		csStatus=cublasAlloc(lay.iNeuronQty+1, sizeof(cuDoubleComplex), (void**)&lay.gpuZOutputs); 
+			mCuMsg(csStatus,"cublasAlloc()")
+		//allocate a GPU-space pointer to a vector of complex error corrections for each layer
+		csStatus=cublasAlloc(lay.iNeuronQty+1, sizeof(cuDoubleComplex), (void**)&lay.gpuDeltas); 
+			mCuMsg(csStatus,"cublasAlloc()")
+		//allocate a GPU-space pointer to a matrix of reversed neuron weights for distributing and accumulating error corrections to each layer
+		csStatus=cublasAlloc((lay.iNeuronQty+1)*(lay.iDendriteQty+1), sizeof(cuDoubleComplex), (void**)&lay.gpuUnWeights);
+			mCuMsg(csStatus,"cublasAlloc()");
+	}
+	return rSes.rNet->rLayer[rSes.rNet->iLayerQty-1].iNeuronQty;
+}
+
+long devCopySampleSet(struct rohanContext& rSes) 
+{mIDfunc///load samples into the parallel structures in the GPU memory
+	long lConvSampleQty=0;
+	cublasStatus csStatus;
+	devCopyArchValues(rSes); // Make sure we are using current settings
+	rSes.rLearn->cdcDScalar=(cuDoubleComplex * )malloc(rSes.rLearn->lSampleQty * (rSes.rLearn->iOutputQty+1) * sizeof(cuDoubleComplex) );
+			mCheckMallocWorked(rSes.rLearn->cdcDScalar); // output signal zero is  represented! XX
+	csStatus=cublasAlloc(rSes.rLearn->lSampleQty * (rSes.rLearn->iOutputQty+1), sizeof(cuDoubleComplex), (void**)&(rSes.rLearn->gpuDScalar));
+			mCuMsg(csStatus,"cublasAlloc()") // output signal zero is  represented! XX
+	csStatus=cublasAlloc(rSes.rLearn->lSampleQty * (rSes.rLearn->iOutputQty+1), sizeof(cuDoubleComplex), (void**)&(rSes.rLearn->gpuYScalar));
+			mCuMsg(csStatus,"cublasAlloc()") // output signal zero is  represented! XX
+		// loop over all samples
+	for(long lSam=0; lSam<rSes.rLearn->lSampleQty; ++lSam) {
+		struct rohanSample& sam = rSes.rLearn->rSample[lSam];	
+		//allocate a CPU-space pointer to a vector of complex neuron inputs for each sample
+		sam.cdcXInputs=(cuDoubleComplex * )malloc((rSes.rLearn->iInputQty+1) * sizeof(cuDoubleComplex) );
+			mCheckMallocWorked(sam.cdcXInputs);
+		//allocate a CPU-space pointer to a vector of complex neuron inputs for each sample copied back from GPU
+		sam.cdcAltXInputs=(cuDoubleComplex * )malloc((rSes.rLearn->iInputQty+1) * sizeof(cuDoubleComplex) );
+			mCheckMallocWorked(sam.cdcAltXInputs);
+			//allocate a GPU-space pointer to a vector of complex neuron inputs for each sample
+		csStatus=cublasAlloc(rSes.rLearn->iInputQty+1, sizeof(cuDoubleComplex), (void**)&(sam.gpuXInputs));
+			mCuMsg(csStatus,"cublasAlloc()")
+		//convert tuple values from scalar to complex in host memory
+		sam.cdcXInputs[0].x=1; sam.cdcXInputs[0].y=0; // neuron zero is always set to 1+0i
+		for (int i=1; i<=rSes.rLearn->iInputQty; ++i){
+			sam.cdcXInputs[i].x=cos( sam.dXInputs[i]/rSes.rNet->dK_DIV_TWO_PI);
+			sam.cdcXInputs[i].y=sin( sam.dXInputs[i]/rSes.rNet->dK_DIV_TWO_PI);
+		}
+		//copy input tuple values from host memory to GPU
+		csStatus=cublasSetVector (rSes.rLearn->iInputQty+1, sizeof(cuDoubleComplex), sam.cdcXInputs, 1, sam.gpuXInputs, 1);
+			mCuMsg(csStatus,"cublasSetVector()")
+		//allocate a CPU-space pointer to a vector of complex neuron outputs for each sample
+		sam.cdcDOutputs=(cuDoubleComplex * )malloc((rSes.rLearn->iOutputQty+1) * sizeof(cuDoubleComplex) );
+			mCheckMallocWorked(sam.cdcDOutputs);
+		//allocate a CPU-space pointer to a vector of complex neuron outputs for each sample copied back from GPU
+		sam.cdcAltDOutputs=(cuDoubleComplex * )malloc((rSes.rLearn->iOutputQty+1) * sizeof(cuDoubleComplex) );
+			mCheckMallocWorked(sam.cdcAltDOutputs);
+		//GPU-space pointer to final cx outputs, never discretized
+		csStatus=cublasAlloc(rSes.rLearn->iOutputQty+1, sizeof(cuDoubleComplex), (void**)&(sam.gpuYEval)); 
+			mCuMsg(csStatus,"cublasAlloc()")
+		//GPU-space pointer to final scalar outputs, stored in .x only
+		csStatus=cublasAlloc(rSes.rLearn->iOutputQty+1, sizeof(cuDoubleComplex), (void**)&(sam.gpudYEval)); 
+			mCuMsg(csStatus,"cublasAlloc()")
+		//allocate a GPU-space pointer to a vector of complex neuron outputs for each sample
+		csStatus=cublasAlloc(rSes.rLearn->iOutputQty+1, sizeof(cuDoubleComplex), (void**)&(sam.gpuDOutputs)); 
+			mCuMsg(csStatus,"cublasAlloc()")
+		//convert tuple values from scalar to complex in host memory
+		for (int i=0; i<=rSes.rLearn->iOutputQty; ++i){// cout << sam.dXInputs[i+rSes.rLearn->iInputQty] << " ";
+			sam.cdcDOutputs[i].x=cos(sam.dXInputs[i+rSes.rLearn->iInputQty]/rSes.rNet->dK_DIV_TWO_PI); //cout << sam.cdcDOutputs[i].x << " ";
+			sam.cdcDOutputs[i].y=sin(sam.dXInputs[i+rSes.rLearn->iInputQty]/rSes.rNet->dK_DIV_TWO_PI); //cout << sam.cdcDOutputs[i].y << " ";
+			//cout << rSes.rNet->dK_DIV_TWO_PI << " ";
+			sam.cdcAltDOutputs[i].x=-999.0;
+			sam.cdcAltDOutputs[i].y=999.0;
+			//cout << rSes.rNet->dK_DIV_TWO_PI << " ";
+			rSes.rLearn->cdcDScalar[IDX2C( i, lSam, rSes.rLearn->iOutputQty+1 )].x = (double)sam.dXInputs[i+rSes.rLearn->iInputQty]; // copy scalar desired outputs.
+			//printf("[ %f , %f ]\n", rSes.rLearn->cdcDScalar[IDX2C(i,lSam,rSes.rLearn->iOutputQty+1)].x , sam.dXInputs[i+rSes.rLearn->iInputQty]);
+		} //cout << endl;
+		sam.cdcDOutputs[0].x=1; sam.cdcDOutputs[0].y=0; // neuron zero is always set to 1+0i
+		//copy output tuple values from host memory to GPU - output signal zero is  represented! XX
+		csStatus=cublasSetVector(rSes.rLearn->iOutputQty+1, sizeof(cuDoubleComplex), sam.cdcDOutputs, 1, sam.gpuDOutputs, 1);
+			mCuMsg(csStatus,"cublasSetVector()")
+		++lConvSampleQty;
+	}
+	//now copying scalar desired outputs to lengthwise array in GPU memory
+	csStatus=cublasSetVector(rSes.rLearn->lSampleQty * (rSes.rLearn->iOutputQty+1), sizeof(cuDoubleComplex), rSes.rLearn->cdcDScalar, 1, rSes.rLearn->gpuDScalar, 1);
+		mCuMsg(csStatus,"cublasSetVector()")
+	cout << lConvSampleQty << " samples transfered to GPU memory space." << endl;
+	return lConvSampleQty; // returns qty of samples converted
+}
+
+long devCopyNNWeights(struct rohanContext &rSes)
+{mIDfunc
+// pulls in values from CPU-memory arrays from .wgt files
+// weights are arranged in network order 8 bytes of real, 8 bytes of imaginary
+	long lReturnValue=0;
+	cublasStatus csStatus;
+	for (int i=1; i < rSes.rNet->iLayerQty; ++i){ //no weights for layer 0
+		struct rohanLayer& lay = rSes.rNet->rLayer[i];
+		csStatus=cublasSetMatrix(lay.iNeuronQty+1, lay.iDendriteQty+1, sizeof(cuDoubleComplex),
+			lay.cdcWeights, lay.iNeuronQty+1, lay.gpuWeights, lay.iNeuronQty+1);
+			mCuMsg(csStatus,"cublasSetMatrix()")
+		lReturnValue+=(lay.iNeuronQty*lay.iDendriteQty);
+	}
+	return lReturnValue;
+}
+
+//int devPrepareNetwork(struct rohanContext& rSes)
+//{mIDfunc /// sets up network properties and data structures for use in GPU memory space
+//	int iReturn;
+//	iReturn=devCopyNNStructures(rSes);
+//	iReturn+=devCopyNNWeights(rSes);
+//	iReturn+=devCopySectorTable(rSes);
+//	cout << iReturn << " network values transfered to GPU memory space." << endl;
+//	return iReturn;
+//}
+
+long cuLoadSampleSet(struct rohanContext& rSes, FILE *fileInput)
+{mIDfunc	/// pulls in values from .txt files, used for testing before main loop
+	// Return:    long
+	//	0 = error
+	#define MAX_REC_LEN 65536 /* Maximum size of input buffer */
+
+	long  lLinesQty=0,lMaxLines=256; /* countable number of lines, number of lines with memory allocation */
+	char  cThisLine[MAX_REC_LEN]; /* Contents of current line */
+	int iArchLineIdx; // The line number that has the sample qty and topology and file params in it
+	rSes.rLearn->iValuesPerLine=0; rSes.rLearn->lSampleQty=0;
+	// reset quantities for counting later
+	char **cLines = (char **)malloc(256 * sizeof (char *));
+	// 1d array of lines in text file beginning with first line in position zero
+	// learning set format allows for first or first and second lines to he paramteres rather than samples
+
+	while (fgets(cThisLine, MAX_REC_LEN, fileInput)) { //each line is read in turn
+		cLines[lLinesQty++] = _strdup(cThisLine); // each line is copied to a string in the array
+		if (!(lMaxLines > lLinesQty)) {  // if alloated space is used up, double it.
+			lMaxLines *= 2;
+			void * temp = realloc(cLines, lMaxLines * sizeof (char *));
+			if (!temp) {
+				  for (int k=0;k<lLinesQty;++k) {
+					  free(cLines[k]);
+				  }
+				  printf("Realloc ran out of space?  OH NOES! %s line %d\n", __FILE__, __LINE__);
+				  return 0;
+			} else {
+				  cLines = (char **)temp;
+			}
+		}
+	}
+	fclose(fileInput); // close stream when fgets returns false (no more lines)
+	// this should be a shrinking, and should never fail.
+	cLines = (char **)realloc(cLines, lLinesQty * sizeof (char*));
+		mCheckMallocWorked(cLines)
+	// 1 means ContActivation
+	// 0 means discrete, and values of 2+ indicate parameter has been omitted,
+	// defaulting to discrete, and value is actually # of samples in file
+	rSes.rLearn->iEvalMode=atof(cLines[0])>1 ? 1 : 0; iArchLineIdx = 1 - rSes.rLearn->iEvalMode;
+		if (rSes.rLearn->iEvalMode) printf ("Discrete output values indicated.\n");
+	else printf("Continuous output values indicated.\n");
+		mDebug(1, 0) printf("\"%s\"%siEvalMode %d, iArchLineIdx %d\n", cLines[0], cLines[1], rSes.rLearn->iEvalMode, iArchLineIdx);
+
+	char *sArch, *tok;
+//	int iTokQty;
+	sArch = _strdup(cLines[iArchLineIdx]); // make a sacrificial copy
+	tok = strtok(sArch, " ,\t");
+	if (sArch==NULL) // no additional params present
+		printf("No params present; fetch from config file or command line (not yet supported XX).\n");
+	else {
+		cuMakeArchValues(cLines[iArchLineIdx], rSes);
+		rSes.rLearn->iInputQty=rSes.rNet->rLayer[0].iNeuronQty;
+		rSes.rLearn->iOutputQty=rSes.rNet->rLayer[rSes.rNet->iLayerQty-1].iNeuronQty;
+	}
+		mDebug(1, 0) printf("\"%s%s %d outputs", cLines[iArchLineIdx], rSes.rNet->sWeightSet, rSes.rLearn->iOutputQty);
+
+	
+	rSes.rLearn->lSampleQty=(long)atof(cLines[iArchLineIdx]);
+	printf("%d samples specified: ", rSes.rLearn->lSampleQty);
+			
+// Parses lines of text for input values and output value and stores them in dynamic int arrays
+// returns # of inputs per line
+	char *pch; 
+	char  *cSample;
+
+	long lCurrentLine=atof(cLines[0])>1 ? 1 : 2; //find which line the samples begin
+	cSample=_strdup(cLines[2]); // strtok chops up the input string, so we must make a copy
+	pch = strtok (cSample, " ,\t");
+	while (pch != NULL) {// this loop counts the values present in a copy of line 2, which has to be a sample line
+		pch = strtok (NULL, " ,\t"); ++rSes.rLearn->iValuesPerLine;
+	}
+		mDebug(1,0) printf("%d inputs, %d outputs, %d values per line.\n",rSes.rLearn->iInputQty, rSes.rLearn->iOutputQty, rSes.rLearn->iValuesPerLine);
+	printf("%d inputs, %d output(s) each.\n", rSes.rLearn->iValuesPerLine-rSes.rLearn->iOutputQty, rSes.rLearn->iOutputQty);
+	int iExcessValueQty=rSes.rLearn->iValuesPerLine-rSes.rLearn->iInputQty-rSes.rLearn->iOutputQty;
+	if(iExcessValueQty>0) {
+		fprintf(stderr, "Warning: %d unused values in sample tuples.\n", iExcessValueQty);
+		++rSes.iWarnings;
+	}
+	if(iExcessValueQty<0) {
+		fprintf(stderr, "Error: %d values not found in sample tuples.\n", iExcessValueQty*-1);
+		++rSes.iErrors;
+	}
+	
+	rSes.rLearn->rSample = (rohanSample*)malloc(rSes.rLearn->lSampleQty * sizeof (rohanSample)); //allocate one pointer to a sample structure per line
+		mCheckMallocWorked(rSes.rLearn->rSample)
+	
+	for (long s=0; s<rSes.rLearn->lSampleQty; ++s){ //iterate over the number of samples and malloc
+		struct rohanSample& sam = rSes.rLearn->rSample[s]; 
+		sam.dXInputs=(double*)malloc((rSes.rLearn->iValuesPerLine+1) * sizeof(double)); // allocate a row of so-many double pointers
+			mCheckMallocWorked(sam.dXInputs)
+		sam.dTOutputs=(double*)malloc((rSes.rLearn->iOutputQty+1) * sizeof(double)); // allocate a row of so-many double pointers
+			mCheckMallocWorked(sam.dTOutputs)
+		sam.dYEval=(double*)malloc((rSes.rLearn->iOutputQty+1) * sizeof(double)); // allocate a row of so-many double pointers
+			mCheckMallocWorked(sam.dYEval)
+		sam.cdcYEval=(cuDoubleComplex*)malloc((rSes.rLearn->iOutputQty+1) * sizeof(cuDoubleComplex)); // allocate a row of so-many double pointers
+			mCheckMallocWorked(sam.cdcYEval)
+		sam.dAltYEval=(double*)malloc((rSes.rLearn->iOutputQty+1) * sizeof(double)); // allocate a row of so-many double pointers
+			mCheckMallocWorked(sam.dAltYEval)
+		sam.cdcAltYEval=(cuDoubleComplex*)malloc((rSes.rLearn->iOutputQty+1) * sizeof(cuDoubleComplex)); // allocate a row of so-many double pointers
+			mCheckMallocWorked(sam.cdcAltYEval)
+		//mark slots as unused
+		for(int k=0; k<=rSes.rLearn->iValuesPerLine; ++k)
+			sam.dXInputs[k]=-999.0;
+		for(int k=0; k<=rSes.rLearn->iOutputQty; ++k){
+			sam.dTOutputs[k]=sam.dYEval[k]=sam.dAltYEval[k]=-999.0;
+			sam.cdcYEval[k]=sam.cdcAltYEval[k]=cdcIdentity;
+		}
+		// parse and store sample values
+		pch = strtok (cLines[lCurrentLine], " ,\t"); // get the first token on a line
+		if(rSes.bRInJMode){ // if flag for compatibility with older NN simulator is set
+			for (int k=rSes.rLearn->iValuesPerLine; k>=1; --k){ // save it beginning with last position
+				sam.dXInputs[k]=atof(pch); // convert and assign each value in a line
+				pch = strtok (NULL, " ,\t");
+			}
+		}
+		else{ // otherwise store things the usual way
+			for (int k=1; k<=rSes.rLearn->iValuesPerLine; ++k){ // save it beginning with position 1
+				sam.dXInputs[k]=atof(pch); // convert and assign each value in a line
+				pch = strtok (NULL, " ,\t");
+			}
+		}
+		sam.dXInputs[0]=0.0; // virtual input zero should always be zero
+		for (int k=0; k<=rSes.rLearn->iOutputQty; ++k) // store desired outputs
+			sam.dTOutputs[k]=sam.dXInputs[rSes.rLearn->iInputQty+k];
+		sam.dTOutputs[0]=0; // output neuron zero should always produce sector 0 output
+		free(cLines[lCurrentLine]); //if (lCurrentLine<10) printf("freed cLine[%d]\n", lCurrentLine);
+		++lCurrentLine;
+	}
+	
+	free(cLines[0]);
+	if (iArchLineIdx) free(cLines[1]); // WEIRD MEMORY ERRORS? LOOK HERE
+	// above line avoids double-freeing cLines[1] if it was used for a sample instead of the sample qty
+	free(cLines);
+ 	return lLinesQty; // returns qty of lines read from file, not the same as quantity of samples
+}
+
+
+long cuReLoadSampleSet(struct rohanContext& rSes, FILE *fileInput)
+{mIDfunc	/// pulls in values from .txt files, used during main loop after NN arch is already made
+	// Return:    long
+	//	0 = error
+	#define MAX_REC_LEN 65536 /* Maximum size of input buffer */
+
+	long  lLinesQty=0,lMaxLines=256; /* countable number of lines, number of lines with memory allocation */
+	char  cThisLine[MAX_REC_LEN]; /* Contents of current line */
+	int iArchLineIdx; // The line number that has the sample qty and topology and file params in it
+	rSes.rLearn->iValuesPerLine=0; rSes.rLearn->lSampleQty=0;
+	// reset quantities for counting later
+	char **cLines = (char **)malloc(256 * sizeof (char *));
+	// 1d array of lines in text file beginning with first line in position zero
+	// learning set format allows for first or first and second lines to he paramteres rather than samples
+
+	while (fgets(cThisLine, MAX_REC_LEN, fileInput)) { //each line is read in turn
+		cLines[lLinesQty++] = _strdup(cThisLine); // each line is copied to a string in the array
+		if (!(lMaxLines > lLinesQty)) {  // if alloated space is used up, double it.
+			lMaxLines *= 2;
+			void * temp = realloc(cLines, lMaxLines * sizeof (char *));
+			if (!temp) {
+				  for (int k=0;k<lLinesQty;++k) {
+					  free(cLines[k]);
+				  }
+				  printf("Realloc ran out of space?  OH NOES! %s line %d\n", __FILE__, __LINE__);
+				  return 0;
+			} else {
+				  cLines = (char **)temp;
+			}
+		}
+	}
+	fclose(fileInput); // close stream when fgets returns false (no more lines)
+	// this should be a shrinking, and should never fail.
+	cLines = (char **)realloc(cLines, lLinesQty * sizeof (char*));
+		mCheckMallocWorked(cLines)
+	// 1 means ContActivation
+	// 0 means discrete, and values of 2+ indicate parameter has been omitted,
+	// defaulting to discrete, and value is actually # of samples in file
+	rSes.rLearn->iEvalMode=atof(cLines[0])>1 ? 1 : 0; iArchLineIdx = 1 - rSes.rLearn->iEvalMode;
+		if (rSes.rLearn->iEvalMode) printf ("Discrete output values indicated.\n");
+	else printf("Continuous output values indicated.\n");
+		mDebug(1, 0) printf("\"%s\"%siEvalMode %d, iArchLineIdx %d\n", cLines[0], cLines[1], rSes.rLearn->iEvalMode, iArchLineIdx);
+
+	char *sArch, *tok;
+	//int iTokQty;
+	sArch = _strdup(cLines[iArchLineIdx]); // make a sacrificial copy
+	tok = strtok(sArch, " ,\t");
+	if (sArch==NULL) // no additional params present
+		printf("No params present; fetching from topology.\n");
+	else 
+		printf("Params present but ignored; fetching from existing topology.\n");
+		//cuMakeArchValues(cLines[iArchLineIdx], rSes);
+	
+	rSes.rLearn->iInputQty=rSes.rNet->rLayer[0].iNeuronQty;
+	rSes.rLearn->iOutputQty=rSes.rNet->rLayer[rSes.rNet->iLayerQty-1].iNeuronQty;
+	
+		mDebug(1, 0) printf("\"%s%s %d outputs", cLines[iArchLineIdx], rSes.rNet->sWeightSet, rSes.rLearn->iOutputQty);
+
+	
+	rSes.rLearn->lSampleQty=(long)atof(cLines[iArchLineIdx]);
+	printf("%d samples specified: ", rSes.rLearn->lSampleQty);
+			
+// Parses lines of text for input values and output value and stores them in dynamic int arrays
+// returns # of inputs per line
+	char *pch; 
+	char  *cSample;
+
+	long lCurrentLine=atof(cLines[0])>1 ? 1 : 2; //find which line the samples begin
+	cSample=_strdup(cLines[2]); // strtok chops up the input string, so we must make a copy
+	pch = strtok (cSample, " ,\t");
+	while (pch != NULL) {// this loop counts the values present in a copy of line 2, which has to be a sample line
+		pch = strtok (NULL, " ,\t"); ++rSes.rLearn->iValuesPerLine;
+	}
+		mDebug(1,0) printf("%d inputs, %d outputs, %d values per line.\n",rSes.rLearn->iInputQty, rSes.rLearn->iOutputQty, rSes.rLearn->iValuesPerLine);
+	printf("%d inputs, %d output(s) each.\n", rSes.rLearn->iValuesPerLine-rSes.rLearn->iOutputQty, rSes.rLearn->iOutputQty);
+	int iExcessValueQty=rSes.rLearn->iValuesPerLine-rSes.rLearn->iInputQty-rSes.rLearn->iOutputQty;
+	if(iExcessValueQty>0) {
+		fprintf(stderr, "Warning: %d unused values in sample tuples.\n", iExcessValueQty);
+		++rSes.iWarnings;
+	}
+	if(iExcessValueQty<0) {
+		fprintf(stderr, "Error: %d values not found in sample tuples.\n", iExcessValueQty*-1);
+		++rSes.iErrors;
+	}
+	
+	rSes.rLearn->rSample = (rohanSample*)malloc(rSes.rLearn->lSampleQty * sizeof (rohanSample)); //allocate one pointer to a sample structure per line
+		mCheckMallocWorked(rSes.rLearn->rSample)
+	
+	for (long s=0; s<rSes.rLearn->lSampleQty; ++s){ //iterate over the number of samples
+		struct rohanSample& sam = rSes.rLearn->rSample[s]; 
+		sam.dXInputs=(double*)malloc((rSes.rLearn->iValuesPerLine+1) * sizeof(double)); // allocate a row of so-many double pointers
+			mCheckMallocWorked(sam.dXInputs)
+		sam.dYEval=(double*)malloc((rSes.rLearn->iOutputQty+1) * sizeof(double)); // allocate a row of so-many double pointers
+			mCheckMallocWorked(sam.dYEval)
+		pch = strtok (cLines[lCurrentLine], " ,\t"); // get the first token on a line
+		if(rSes.bRInJMode){ // if flag for compatibility with older NN simulator is set
+			for (int k=rSes.rLearn->iValuesPerLine; k>=1; --k){ // save it beginning with last position
+				sam.dXInputs[k]=atof(pch); // convert and assign each value in a line
+				pch = strtok (NULL, " ,\t");
+			}
+		}
+		else{ // otherwise store things the usual way
+			for (int k=1; k<=rSes.rLearn->iValuesPerLine; ++k){ // save it beginning with position 1
+				sam.dXInputs[k]=atof(pch); // convert and assign each value in a line
+				pch = strtok (NULL, " ,\t");
+			}
+		}
+		sam.dXInputs[0]=-999.0; // mark unused slot zero
+		for (int k=0; k<=rSes.rLearn->iOutputQty; ++k){ // mark all eval outputs
+			sam.dYEval[k]=-999.0;
+		}
+		free(cLines[lCurrentLine]); //if (lCurrentLine<10) printf("freed cLine[%d]\n", lCurrentLine);
+		++lCurrentLine;
+	}
+	
+	free(cLines[0]);
+	if (iArchLineIdx) free(cLines[1]); // WEIRD MEMORY ERRORS? LOOK HERE
+	// above line avoids double-freeing cLines[1] if it was used for a sample instead of the sample qty
+	free(cLines);
+ 	return lLinesQty; // returns qty of lines read from file, not the same as quantity of samples
+}
+
+
+long cuNNLoadWeights(struct rohanContext &rSes, FILE *fileInput)
+{mIDfunc
+// pulls in values from .wgt files
+// weights are arranged in network order 8 bytes of real, 8 bytes of imaginary
+	long lReturnValue=0;
+	for (int i=1; i < rSes.rNet->iLayerQty; ++i){ //no weights for layer 0
+		struct rohanLayer& lay = rSes.rNet->rLayer[i];
+		for (int j=1; j <= lay.iNeuronQty; ++j){ // no weights for neuron 0
+			for (int k=0; k <= lay.iDendriteQty; ++k){
+				cuDoubleComplex& way = lay.cdcWeights[IDX2C(j, k, lay.iNeuronQty+1)];
+				fread(&(way.x), sizeof(double), 1, fileInput);
+				fread(&(way.y), sizeof(double), 1, fileInput);
+				++lReturnValue;
+			}
+		}
+	}
+	fclose(fileInput);
+		//ShowMeWS(rSes, false);
+	return lReturnValue;
+}
+
+long cuSaveNNWeights(struct rohanContext &rSes, FILE *fileOutput)
+{mIDfunc
+// writes values to .wgt files
+// weights are arranged in network order 8 bytes of real, 8 bytes of imaginary
+	long lReturnValue=0;
+	//cublasStatus csStatus;
+	for (int i=1; i < rSes.rNet->iLayerQty; ++i){ //no weights for layer 0
+		struct rohanLayer& lay = rSes.rNet->rLayer[i];
+		for (int j=1; j <= lay.iNeuronQty; ++j){ // no weights for neuron 0
+			for (int k=0; k <= lay.iDendriteQty; ++k){
+				cuDoubleComplex& way = lay.cdcWeights[IDX2C(j, k, lay.iNeuronQty+1)];
+				fwrite(&(way.x), sizeof(double), 1, fileOutput);
+				fwrite(&(way.y), sizeof(double), 1, fileOutput);
+				++lReturnValue;
+				mDebug(4,0) printf("weight %d.%d.%d= % 1f + % 1f i\n",  i, j, k, way.x, way.y);
+			}
+		}
+	}
+	fclose(fileOutput);
+		//ShowMeWS(rSes.rNet, false);
+	return lReturnValue;
+}
+long cuSaveNNWeightsASCII(struct rohanContext &rSes, FILE *fileOutput)
+{mIDfunc
+// writes values to .txt files
+// weights are arranged in network order 8 bytes of real, 8 bytes of imaginary
+	long lReturnValue=0;
+	//cublasStatus csStatus;
+	for (int i=1; i < rSes.rNet->iLayerQty; ++i){ //no weights for layer 0
+		struct rohanLayer& lay = rSes.rNet->rLayer[i];
+		for (int j=1; j <= lay.iNeuronQty; ++j){ // no weights for neuron 0
+			for (int k=0; k <= lay.iDendriteQty; ++k){
+				cuDoubleComplex& way = lay.cdcWeights[IDX2C(j, k, lay.iNeuronQty+1)];
+				fprintf(fileOutput, "% 11f,% 11f,% d,% d,% d\n", way.x, way.y, i, j, k);
+				++lReturnValue;
+				mDebug(4,0) printf("weight %d.%d.%d= % 1f + % 1f i\n",  i, j, k, way.x, way.y);
+			}
+		}
+	}
+	fclose(fileOutput);
+		//ShowMeWS(rSes.rNet, false);
+	return lReturnValue;
+}
+
+long cuPreSaveNNWeights(struct rohanContext& rSes)
+{mIDfunc
+	FILE *fileOutput;
+	char sFileName[255]; //="DefaultSession";
+	char sFileAscii[255]; //="DefaultSession";
+
+	strncpy(sFileName,rSes.sSesName,250); // do not exceed 254 char file name
+	strcat(sFileName,".wgt");
+	strncpy(sFileAscii,rSes.sSesName,248); // do not exceed 254 char file name
+	strcat(sFileAscii,"WGT.txt");
+
+	fileOutput = fopen(sFileName, "wb");  /* Open in BINARY mode */
+	if (fileOutput == NULL) {
+		fprintf(stderr, "Error opening %s for writing.\n", sFileName);
+		++rSes.iErrors;
+		return 0;
+	}
+	else {
+		long lWWrit=cuSaveNNWeights(rSes, fileOutput);
+		printf("%d binary weights written to %s\n", lWWrit, sFileName);
+		fileOutput = fopen(sFileAscii, "w");  /* Open in ASCII mode */
+		if (fileOutput == NULL) {
+			fprintf(stderr, "Error opening %s for writing.\n", sFileAscii);
+			++rSes.iErrors;
+			return 0;
+		}
+		else {
+			long lWWrit=cuSaveNNWeightsASCII(rSes, fileOutput);
+			printf("%d ASCII weights written to %s\n", lWWrit, sFileAscii);
+			return 1;
+		}	
+	}
+}
+
+long AsciiWeightDump(struct rohanContext rSes, FILE *fileOutput)
+{mIDfunc
+/// outputs values from .wgt files as ASCII text
+/// weights are arranged in network order 8 bytes of real, 8 bytes of imaginary
+	long lReturnValue=0;
+
+	fprintf(fileOutput, "REAL\tIMAGINARY\tLAYER\tNEURON\tINPUT\n");
+	for (int i=1; i < rSes.rNet->iLayerQty; ++i){
+		struct rohanLayer& lay = rSes.rNet->rLayer[i];
+		for (int j=1; j <= lay.iNeuronQty; ++j){
+			for (int k=0; k <= lay.iDendriteQty; ++k){
+				++lReturnValue;
+				fprintf(fileOutput, "%f\t%f\t%d\t%d\t%d\n", lay.cdcWeights[IDX2C(j, k, lay.iNeuronQty+1)].x, lay.cdcWeights[IDX2C(j, k, lay.iNeuronQty+1)].y, i, j, k);
+			}
+		}
+	}
+	fclose(fileOutput);
+	return lReturnValue;
+}
+
+long WriteWeights(struct rohanContext& rSes)
+{mIDfunc/// saves weigth values to disk
+	long lReturn;
+	// dump weights for verification
+	FILE *fileOutput; // File handle for input
+	lReturn=AsciiFileHandleWrite("weightdump.txt", &fileOutput);
+	AsciiWeightDump(rSes, fileOutput); //link error XX
+	return lReturn;
+}
+
+//int cuPrepareNetwork(struct rohanContext& rSes)
+//{mIDfunc /// sets up network properties and data structures for use in host memory space
+//	int iReturn;
+//	cuMakeNNStructures(rSes); // allocates memory and populates network structural arrays
+//	iReturn=BinaryFileHandleRead(rSes.rNet->sWeightSet, &rSes.rNet->fileInput);
+//	// file opening and reading are separated to allow for streams to be added later
+//	if (iReturn) {
+//		long lWeightsRead=cuNNLoadWeights(rSes, rSes.rNet->fileInput);
+//			if (lWeightsRead) printf("Parsed and assigned %d complex weights from %s\n", lWeightsRead, rSes.rNet->sWeightSet);
+//			else {
+//				fprintf(stderr, "Error: No Weights Read by cuNNLoadWeights\n");
+//				++rSes.iErrors;
+//				printf("Waiting on keystroke...\n"); _getch(); return iReturn;
+//			}
+//	}
+//	else { // can't open, user random weights
+//		printf("Can't open %s, using random weights.\n", rSes.rNet->sWeightSet);
+//		cuRandomizeWeights(rSes); // populate network with random weight values
+//	}
+//	iReturn=cuSectorTableMake(rSes); // fill the table with values
+//	if (iReturn==0) {
+//		printf("Out of Memory in cuSectorTableMake\n");
+//		++rSes.iErrors;
+//		printf("Waiting on keystroke...\n");
+//		_getch();
+//	}
+//	return iReturn;
+//}
+
+

@@ -1,0 +1,49 @@
+/* Includes, cuda */
+#include "Rohan.h"
+
+
+
+int CurateSectorValue(struct rohanContext& rSes)
+;
+
+cuDoubleComplex CxActivate(cuDoubleComplex Z, struct rohanContext& rSes)
+;
+long cuEvalMidTopLayers(struct rohanContext& rSes, long lSample)
+;
+long cuConvertInputs(struct rohanContext& rSes, long lSample)
+;
+long cuOutputConvert(struct rohanContext& rSes, long lSample)
+;
+long cuEvalNNLearnSet(struct rohanContext& rSes)
+;
+
+
+//int cuMakeNNStructures(struct rohanContext& rSes)
+//;
+//int cuSectorTableMake(struct rohanContext& rSes)
+//;
+//long cuRandomizeWeights(struct rohanContext& rSes)
+//;
+//int cuFreeNNTop(struct rohanContext& rSes)
+//;
+//int cuFreeLearnSet(struct rohanContext& rSes)
+//;
+//int cuFree(struct rohanContext& rSes)
+//;
+//
+//
+//int devCopyNNStructures(struct rohanContext& rSes)
+//;
+//int devCopySectorTable(struct rohanContext& rSes)
+//;
+//long dualRandomizeWeights(struct rohanContext& rSes)
+//;
+
+long devOutputConvert(struct rohanContext& rSes, long lSample)
+;
+
+long devEvalNNLearnSet(struct rohanContext& rSes)
+;
+
+
+
