@@ -1,0 +1,85 @@
+int _tmain(int argc, _TCHAR* argv[])
+{mIDfunc/// general program procedure is to setup preparations for the duty loop, execute it, then do housekeeping after
+	
+	// create objects
+	struct rohanContext rSes;
+	struct rohanNetwork rNet;
+	struct rohanLearningSet rLearn;
+	cDeviceTeam cdtHorse(rSes); // the horse handles GPU computation kernels and their currency
+	cBarge cbBarge(rSes); // 
+	cDrover cdDrover(rSes);
+	// proceed with operations
+	if(cdDrover.DoAnteLoop(argc, argv, &cdDrover, &cbBarge, &cdtHorse)){
+			cDrover::SetDroverBargeAndTeam( cdDrover, cbBarge, cdtTeam);
+				Barge->SetDrover(cdDrover);
+				Barge->SetTeam(Team);
+				Team->SetDrover(cdDrover);
+				Team->SetBarge(Barge);
+			Team->CUDAverify(struct rohanContext& rSes)
+			cDrover::ObtainGlobalSettings(struct rohanContext& rSes)
+
+			// go to general diagnostic
+			cDrover::ShowDiagnostics(struct rohanContext& rSes)
+			
+				// prepartion for automated regression testing begins here
+				cDrover::AskSampleSetName(struct rohanContext& rSes)
+				cBarge::ObtainSampleSet(struct rohanContext& rSes)
+					int AsciiFileHandleRead(char *sFileName, FILE **fileInput)
+					cBarge::DoLoadSampleSet(struct rohanContext& rSes, FILE *fileInput)
+						int cuMakeArchValues(char *sMLMVNarch, struct rohanContext& rSes)
+					cBarge::CurateSectorValue(struct rohanContext& rSes)
+					cBarge::CompleteHostLearningSet(struct rohanContext& rSes)
+						cuDoubleComplex ConvScalarCx(struct rohanContext& rSes, double Scalar)
+				Barge->DoPrepareNetwork(*rSes);
+					int cuMakeNNStructures(struct rohanContext &rSes)
+					int BinaryFileHandleRead(char* sFileName, FILE** fileInput)
+					long cuNNLoadWeights(struct rohanContext &rSes, FILE *fileInput)
+					long cuRandomizeWeights(struct rohanContext &rSes)
+						int cuResetAllDeltasAndOutputs(rohanContext& rSes)
+					int cuSectorTableMake(struct rohanContext &rSes)
+				cDeviceTeam::LetHitch(struct rohanContext& rSes)
+					cDeviceTeam::TransferContext(struct rohanContext& rSes, char Direction
+					cDeviceTeam::CopyNet(struct rohanContext& rSes, char Direction)
+					cDeviceTeam::CopyLearnSet(struct rohanContext& rSes, char Direction)				
+				// engagement complete
+				
+				// copy information back from DEVICE to HOST
+				cDeviceTeam::LetSlack(struct rohanContext& rSes);
+					TransferContext(rSes, 'H');
+					TransferLayers(rSes, 'H');
+					TransferNet(rSes, 'H');
+					TransferOutputs(rSes, 'H');
+				// end copy from DEVICE to HOST
+
+				RmseEvaluateTest(rSes, rNet, 2 );
+					Team->LetTaut(rSes);
+						TransferContext(rSes, 'D');
+						TransferLayers(rSes, 'D');
+						TransferNet(rSes, 'D');
+						TransferOutputs(rSes, 'D');
+					Team->GetRmseNN(rSes, 0));
+						knlRMSEopt( rSes, 0, 1, 'R');
+							mtkRMSEoptMT<<< rSes.iEvalBlocks , rSes.iEvalThreads >>>( lSampleQtyReq, o, Option);
+								subkEvalSampleSingleThread(sindex, 'R', Signals, Zs, devNet.Wt);
+								subkRmseMT(	lSampleQtyReq, o);
+					Team->LetSlack(rSes);
+					cuEvalNNLearnSet(rSes);
+						cuEvalSingleSampleBeta(rSes, s, *rSes.rNet, 0, rSes.rNet->Signals, rSes.rNet->Zs, rSes.rNet->Wt, rSes.rLearn->cdcXInputs, rSes.rLearn->cdcYEval, rSes.rLearn->dYEval); // fixed-length method working 2/14/12
+					rNet.dHostRMSE = RmseNN(rSes, 0);
+					long OutputValidate(rohanContext& rSes)
+				ClassifyTest(rSes, rNet, 2 );
+					LetTaut(rS);
+					lDeviceTrainable += Team->LetTrainNNThresh(rSes, rSes.rLearn->lSampleQty, 1, 'E', rSes.dTargetRMSE, rSes.iEpochLength);
+					lReturn=knlBackProp( rSes, lFinalSample, o, chMethod); // do training
+						mtkBackPropEoptML<<< rSes.iBpropBlocks , rSes.iBpropThreads >>>( lSampleQtyReq, o);
+					LetSlack(rS);
+					int iHostTrainable = TrainNNThresh(rSes, false);
+				BackPropTest(rSes, rNet, 1, 32);
+					knlRMSEopt(rSes, 0, 1, 'M', 1, iThreads);
+				BackPropTest(rSes, rNet, 1, 64);
+					knlRMSEopt(rSes, 0, 1, 'M', 1, iThreads));
+			Barge->ShowDiagnostics();
+		cdDrover.DoMainLoop(rSes);
+	}
+	cdDrover.DoPostLoop(rSes);
+}

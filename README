@@ -1,0 +1,15 @@
+ * ROHAN 1.0 was developed by Jeffery Wilson <jwilson@clueland.com> at the Texas A&M 
+ University - Texarkana Computational Intelligence Laboratory 
+ 
+	< http://www.tamut.edu/CIL/ > 
+	
+under the direction of Dr Igor Aizenberg.
+
+ * Funded by National Science Foundation grant #0925080.
+ 
+ * ROHAN is a parallel-processing simulator of multilayer, feed-forward neural networks built from complex signaling, multivalued logic neurons.
+ 
+ * ROHAN is written in VC++ 2008 with Nvidia CUDA 4.2 or later and Boost library 1.48 or later.
+ 
+	< http://www.nvidia.com/getcuda >	< http://www.boost.org/ >
+
